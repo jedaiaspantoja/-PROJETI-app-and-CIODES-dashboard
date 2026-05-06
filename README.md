@@ -551,3 +551,104 @@ Antes de subir o projeto:
 4. Considere adicionar `.gitignore` para `node_modules`, `.expo`, logs e arquivos `.env` sensiveis.
 
 A publishable key do Supabase pode ficar no frontend, mas a seguranca deve vir de RLS/policies.
+
+## Colaboracao no GitHub
+
+Repositorio remoto:
+
+```text
+https://github.com/jedaiaspantoja/-PROJETI-app-and-CIODES-dashboard.git
+```
+
+### Precisa mandar invite?
+
+Depende da visibilidade do repositorio:
+
+- Repositorio privado: sim, voce precisa convidar cada membro.
+- Repositorio publico: eles conseguem clonar sem convite, mas precisam de permissao para enviar branches diretamente para o repositorio.
+
+Para convidar membros no GitHub:
+
+```text
+Repositorio -> Settings -> Collaborators -> Add people
+```
+
+Depois digite o usuario ou email da pessoa e envie o convite.
+
+### Como clonar o projeto
+
+Cada integrante deve rodar:
+
+```powershell
+git clone https://github.com/jedaiaspantoja/-PROJETI-app-and-CIODES-dashboard.git
+cd -PROJETI-app-and-CIODES-dashboard
+npm install
+```
+
+Depois criar o arquivo `.env` local:
+
+```powershell
+copy .env.example .env
+```
+
+O arquivo `.env` real nao deve ser enviado ao GitHub.
+
+### Como criar uma branch para trabalhar
+
+Cada melhoria deve ser feita em uma branch separada:
+
+```powershell
+git checkout -b nome-da-branch
+```
+
+Exemplos:
+
+```powershell
+git checkout -b melhoria-dashboard-ciodes
+git checkout -b cadastro-socorrista
+git checkout -b sensores-arduino
+```
+
+### Como salvar alteracoes
+
+Depois de alterar arquivos:
+
+```powershell
+git status
+git add .
+git commit -m "Descreve a alteracao feita"
+```
+
+### Como enviar a branch para o GitHub
+
+```powershell
+git push -u origin nome-da-branch
+```
+
+Exemplo:
+
+```powershell
+git push -u origin melhoria-dashboard-ciodes
+```
+
+Depois, no GitHub, abra um Pull Request da branch para `main`.
+
+### Como atualizar a branch local
+
+Antes de comecar a mexer, sempre atualizar a `main`:
+
+```powershell
+git checkout main
+git pull origin main
+```
+
+Depois criar uma branch nova a partir da `main` atualizada.
+
+### Regra recomendada para o grupo
+
+- Nao trabalhar direto na `main`.
+- Cada pessoa cria uma branch por tarefa.
+- Antes de mexer, roda `git pull origin main`.
+- Antes de enviar, roda `npx --no-install tsc --noEmit`.
+- Mudancas maiores devem ir por Pull Request.
+- Nao subir `.env`, senha do banco, service role key, logs ou `node_modules`.
