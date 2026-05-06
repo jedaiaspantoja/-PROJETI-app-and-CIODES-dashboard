@@ -1,0 +1,201 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>CIODES - PROJETI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="styles.css?v=20260506-1" />
+  </head>
+
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>CIODES - Painel Operacional</h1>
+        <p class="topbar-subtitle">Despacho, empenho de viaturas e acompanhamento das ocorrências reais.</p>
+      </div>
+      <div class="topbar-right">
+        <div class="status-pill" id="realtime-status">
+          <span class="dot dot-offline"></span>
+          <span class="status-text">Desconectado</span>
+        </div>
+        <button id="refresh-btn" class="btn btn-secondary">Recarregar</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="summary">
+        <div class="metric"><span>Aguardando despacho</span><strong id="dispatch-count">-</strong></div>
+        <div class="metric"><span>Em andamento</span><strong id="progress-count">-</strong></div>
+        <div class="metric"><span>Viaturas disponíveis</span><strong id="available-count">-</strong></div>
+        <div class="metric"><span>Finalizadas hoje</span><strong id="closed-today-count">-</strong></div>
+        <div class="metric"><span>Última atualização</span><strong id="last-updated">-</strong></div>
+      </section>
+
+      <section class="toolbar">
+        <input id="search-input" class="search" placeholder="Buscar por protocolo, solicitante, tipo ou viatura" />
+        <select id="filter-status" class="select">
+          <option value="">Status: todos</option>
+          <option value="registrada">Registrada</option>
+          <option value="recebida_ciodes">Recebida pelo CIODES</option>
+          <option value="guarnicao_empenhada">Guarnição empenhada</option>
+          <option value="em_deslocamento">Em deslocamento</option>
+          <option value="em_atendimento">Em atendimento</option>
+          <option value="finalizada">Finalizada</option>
+        </select>
+      </section>
+
+      <section class="ops-grid">
+        <div class="panel panel-large">
+          <div class="panel-header">
+            <h2>Fila de despacho</h2>
+            <span class="hint">Ocorrências reais ainda sem viatura empenhada.</span>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Protocolo</th>
+                  <th>Tempo</th>
+                  <th>Solicitante</th>
+                  <th>Ocorrência</th>
+                  <th>Vítima</th>
+                  <th>Local</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="dispatch-body"><tr><td colspan="7" class="empty-row">Carregando...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <aside class="panel">
+          <div class="panel-header">
+            <h2>Viaturas</h2>
+            <span class="hint">Guarnições disponíveis para empenho.</span>
+          </div>
+          <div id="vehicle-board" class="vehicle-board"></div>
+        </aside>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Ocorrências em andamento</h2>
+          <span class="hint">Empenhadas, em deslocamento ou atendimento.</span>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Protocolo</th>
+                <th>Status</th>
+                <th>Viatura</th>
+                <th>Ocorrência</th>
+                <th>Vítima</th>
+                <th>Tempo</th>
+                <th>Local</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="progress-body"><tr><td colspan="8" class="empty-row">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Histórico finalizado</h2>
+          <span class="hint">Últimas ocorrências encerradas.</span>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Protocolo</th>
+                <th>Encerramento</th>
+                <th>Solicitante</th>
+                <th>Ocorrência</th>
+                <th>Viatura</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="history-table-body"><tr><td colspan="6" class="empty-row">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Gestão de viaturas e equipe</h2>
+          <span class="hint">Cadastre viaturas e vincule socorristas à guarnição.</span>
+        </div>
+        <div class="management-grid">
+          <form id="form-guarnicao" class="form-block">
+            <h3>Cadastrar viatura</h3>
+            <label>Tipo de viatura</label>
+            <input id="guarnicao-tipo" placeholder="Ex: UR, ABT, AR" />
+            <label>Prefixo</label>
+            <input id="guarnicao-prefixo" placeholder="Ex: UR-001" />
+            <label>Descrição</label>
+            <input id="guarnicao-descricao" placeholder="Equipe, base ou observação" />
+            <button class="btn btn-primary" type="submit">Salvar viatura</button>
+          </form>
+
+          <form id="form-escala" class="form-block">
+            <h3>Vincular socorrista</h3>
+            <label>Viatura</label>
+            <select id="escala-guarnicao"></select>
+            <label>Socorrista</label>
+            <select id="escala-bombeiro"></select>
+            <label>Função</label>
+            <input id="escala-turno" placeholder="Socorrista, condutor, chefe" />
+            <button class="btn btn-primary" type="submit">Adicionar à equipe</button>
+          </form>
+        </div>
+
+        <div class="table-wrapper compact-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Viatura</th>
+                <th>Socorrista</th>
+                <th>Função</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="escala-body"><tr><td colspan="4" class="empty-row">Nenhum vínculo ativo.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <div id="assign-modal" class="modal hidden">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <h3>Empenhar viatura</h3>
+        <p id="assign-id" class="modal-caption"></p>
+        <label>Viatura disponível</label>
+        <select id="assign-select" class="select"></select>
+        <label>Observação do operador</label>
+        <textarea id="assign-note" rows="3" placeholder="Opcional"></textarea>
+        <div id="assign-loading" class="hint"></div>
+        <div class="modal-actions">
+          <button id="assign-save" class="btn btn-primary">Empenhar</button>
+          <button id="assign-close" class="btn btn-secondary">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="history-modal" class="modal hidden">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <h3>Histórico da ocorrência</h3>
+        <p id="history-id" class="modal-caption"></p>
+        <ul id="history-list" class="history-list"></ul>
+        <div class="modal-actions"><button id="history-close" class="btn btn-secondary">Fechar</button></div>
+      </div>
+    </div>
+
+    <script src="/node_modules/@supabase/supabase-js/dist/umd/supabase.js?v=20260506-1"></script>
+    <script src="app.js?v=20260506-1" defer></script>
+  </body>
+</html>

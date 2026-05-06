@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "PROJETI",
+    "slug": "projeti",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "projeti",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.projeti.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0F172A"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-sqlite"
+    ]
+  }
+}
