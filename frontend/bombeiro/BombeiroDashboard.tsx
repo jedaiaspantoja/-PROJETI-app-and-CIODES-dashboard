@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -13,6 +13,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../backend/connectors/postgre';
 import { getCurrentUser } from '../shared/authSession';
 
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+
 const colors = {
   background: '#0F172A',
   text: '#F9FAFB',
@@ -22,6 +24,7 @@ const colors = {
   primary: '#2563EB',
   danger: '#EF4444',
   warning: '#F59E0B',
+  success: '#10B981', // Nova cor
 };
 
 type OcorrenciaRow = {
@@ -38,25 +41,22 @@ type OcorrenciaRow = {
 
 type StatusFilter = 'ativas' | 'todas' | 'fechadas';
 
-function statusToLabel(statusRaw: string | null | undefined): string {
+// Função para mapear o status para um estilo visual (cor de fundo, cor de texto e ícone)
+function getStatusStyle(statusRaw: string | null | undefined) {
   const s = (statusRaw || '').toLowerCase();
   switch (s) {
-    case 'registrada':
-      return 'Registrada';
-    case 'recebida_ciodes':
-      return 'Recebida pelo CIODES';
     case 'guarnicao_empenhada':
-      return 'Guarnicao empenhada';
+      return { bg: '#7F1D1D', text: '#FECACA', label: 'Empenhada (Responda)', icon: 'alert-circle-outline' };
     case 'em_deslocamento':
-      return 'Em deslocamento';
+      return { bg: '#78350F', text: '#FDE68A', label: 'Em deslocamento', icon: 'ambulance' };
     case 'em_atendimento':
-      return 'Em atendimento';
+      return { bg: '#064E3B', text: '#A7F3D0', label: 'Em atendimento', icon: 'medical-bag' };
     case 'finalizada':
-      return 'Finalizada';
+      return { bg: '#1F2937', text: '#D1D5DB', label: 'Finalizada', icon: 'check-circle-outline' };
     case 'cancelada':
-      return 'Cancelada';
+      return { bg: '#4C1D95', text: '#DDD6FE', label: 'Cancelada', icon: 'cancel' };
     default:
-      return statusRaw || 'Desconhecido';
+      return { bg: '#172554', text: '#BFDBFE', label: statusRaw || 'Desconhecido', icon: 'information-outline' };
   }
 }
 
@@ -112,7 +112,7 @@ export default function BombeiroDashboard({ navigation }: any) {
       const guarnicaoIds = Array.from(new Set(((membros || []) as any[]).map((m) => m.guarnicao_id).filter(Boolean)));
 
       if (!guarnicaoIds.length) {
-        setErroGuarnicao('Voce nao esta vinculado a nenhuma guarnicao ativa.');
+        setErroGuarnicao('Voce nao esta vinculado a nenhuma guarnicao ativa. Fale com o CIODES.');
         setOcorrencias([]);
         return;
       }
@@ -177,10 +177,16 @@ export default function BombeiroDashboard({ navigation }: any) {
 
   const ocorrenciasFiltradas = useMemo(() => {
     if (statusFilter === 'ativas') {
-      return ocorrencias.filter((o) => (o.status || '').toLowerCase() !== 'finalizada');
+      return ocorrencias.filter((o) => {
+        const s = (o.status || '').toLowerCase();
+        return s !== 'finalizada' && s !== 'cancelada';
+      });
     }
     if (statusFilter === 'fechadas') {
-      return ocorrencias.filter((o) => (o.status || '').toLowerCase() === 'finalizada');
+      return ocorrencias.filter((o) => {
+        const s = (o.status || '').toLowerCase();
+        return s === 'finalizada' || s === 'cancelada';
+      });
     }
     return ocorrencias;
   }, [ocorrencias, statusFilter]);
@@ -189,25 +195,38 @@ export default function BombeiroDashboard({ navigation }: any) {
     const tipo = item.tipo_ocorrencia?.nome || 'Ocorrencia sem tipo';
     const vitima = item.tipo_vitima?.nome || 'Vitima nao informada';
     const hasCoords = item.latitude != null && item.longitude != null;
+    const styleInfo = getStatusStyle(item.status);
 
     return (
       <TouchableOpacity
-        style={styles.card}
+        style={[styles.card, (item.status === 'guarnicao_empenhada') && styles.cardUrgent]}
         activeOpacity={0.85}
         onPress={() => navigation.navigate('BombeiroDetalhe', { ocorrenciaId: item.id })}
       >
         <View style={styles.cardHeader}>
-          <View style={styles.statusPill}>
-            <Text style={styles.statusPillText}>{statusToLabel(item.status)}</Text>
+          <View style={[styles.statusPill, { backgroundColor: styleInfo.bg }]}>
+            <MaterialCommunityIcons name={styleInfo.icon as any} size={14} color={styleInfo.text} style={{ marginRight: 4 }} />
+            <Text style={[styles.statusPillText, { color: styleInfo.text }]}>{styleInfo.label}</Text>
           </View>
-          <Text style={styles.elapsed}>{formatElapsed(item.criada_em)}</Text>
+          <View style={styles.timeContainer}>
+            <MaterialCommunityIcons name="clock-outline" size={14} color={colors.warning} style={{ marginRight: 4 }} />
+            <Text style={styles.elapsed}>{formatElapsed(item.criada_em)}</Text>
+          </View>
         </View>
 
         <Text style={styles.cardTitle}>{tipo}</Text>
-        <Text style={styles.cardSubtitle}>Vitima: {vitima}</Text>
-        <Text style={styles.locationText} numberOfLines={2}>
-          {item.endereco_texto || (hasCoords ? `${item.latitude}, ${item.longitude}` : 'Localizacao nao informada')}
-        </Text>
+        
+        <View style={styles.infoRow}>
+          <MaterialCommunityIcons name="account-alert" size={16} color={colors.placeholder} />
+          <Text style={styles.cardSubtitle}>Vítima: {vitima}</Text>
+        </View>
+
+        <View style={styles.infoRow}>
+          <MaterialCommunityIcons name="map-marker-outline" size={16} color={colors.placeholder} />
+          <Text style={styles.locationText} numberOfLines={2}>
+            {item.endereco_texto || (hasCoords ? `${item.latitude}, ${item.longitude}` : 'Localizacao nao informada')}
+          </Text>
+        </View>
 
         <View style={styles.cardActions}>
           <TouchableOpacity
@@ -215,9 +234,10 @@ export default function BombeiroDashboard({ navigation }: any) {
             disabled={!hasCoords}
             onPress={() => void openRoute(item)}
           >
-            <Text style={styles.actionButtonText}>Abrir rota</Text>
+            <MaterialCommunityIcons name="navigation-variant" size={16} color="#FFF" style={{ marginRight: 6 }} />
+            <Text style={styles.actionButtonText}>Abrir Rota GPS</Text>
           </TouchableOpacity>
-          <Text style={styles.protocolText}>{item.protocolo}</Text>
+          <Text style={styles.protocolText}>#{item.protocolo}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -227,18 +247,19 @@ export default function BombeiroDashboard({ navigation }: any) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 12, color: colors.placeholder }}>Carregando ocorrencias empenhadas...</Text>
+        <Text style={{ marginTop: 12, color: colors.placeholder }}>Sincronizando com o CIODES...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Ocorrencias empenhadas</Text>
-      <Text style={styles.subtitle}>Local, tipo, vitima e andamento do atendimento.</Text>
+      <Text style={styles.title}>Minhas Ocorrências</Text>
+      <Text style={styles.subtitle}>Acompanhe os chamados atribuídos à sua viatura.</Text>
 
       {erroGuarnicao && (
         <View style={styles.alertBox}>
+          <MaterialCommunityIcons name="alert" size={20} color={colors.danger} style={{ marginRight: 8 }} />
           <Text style={styles.alertText}>{erroGuarnicao}</Text>
         </View>
       )}
@@ -247,20 +268,25 @@ export default function BombeiroDashboard({ navigation }: any) {
         <View style={styles.filterRow}>
           <FilterChip label="Ativas" active={statusFilter === 'ativas'} onPress={() => setStatusFilter('ativas')} />
           <FilterChip label="Todas" active={statusFilter === 'todas'} onPress={() => setStatusFilter('todas')} />
-          <FilterChip label="Finalizadas" active={statusFilter === 'fechadas'} onPress={() => setStatusFilter('fechadas')} />
+          <FilterChip label="Histórico" active={statusFilter === 'fechadas'} onPress={() => setStatusFilter('fechadas')} />
         </View>
       )}
 
       {erroGuarnicao ? null : ocorrenciasFiltradas.length === 0 ? (
-        <Text style={{ color: colors.placeholder }}>Nenhuma ocorrencia empenhada encontrada.</Text>
+        <View style={styles.emptyContainer}>
+          <MaterialCommunityIcons name="check-decagram" size={64} color="#1F2937" />
+          <Text style={styles.emptyText}>Nenhuma ocorrência ativa.</Text>
+          <Text style={styles.emptySubtext}>Aguardando chamados do CIODES.</Text>
+        </View>
       ) : (
         <FlatList
           data={ocorrenciasFiltradas}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-          contentContainerStyle={{ paddingBottom: 24 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+          contentContainerStyle={{ paddingBottom: 32 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}
         />
       )}
     </View>
@@ -289,109 +315,137 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: '800',
     color: colors.text,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.placeholder,
     marginTop: 4,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 14,
+    padding: 16,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  cardUrgent: {
+    borderColor: '#7F1D1D',
+    borderWidth: 1.5,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
-    gap: 8,
+    marginBottom: 12,
   },
   statusPill: {
-    backgroundColor: '#172554',
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
   },
   statusPillText: {
-    color: '#BFDBFE',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  timeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   elapsed: {
     color: colors.warning,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
   },
   cardTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '800',
     color: colors.text,
+    marginBottom: 8,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
   },
   cardSubtitle: {
     fontSize: 15,
     color: colors.text,
-    marginTop: 4,
+    marginLeft: 6,
   },
   locationText: {
-    fontSize: 13,
+    flex: 1,
+    fontSize: 14,
     color: colors.placeholder,
-    marginTop: 8,
+    marginLeft: 6,
   },
   cardActions: {
-    marginTop: 12,
+    marginTop: 18,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 10,
   },
   actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   actionButtonDisabled: {
-    opacity: 0.45,
+    opacity: 0.4,
   },
   actionButtonText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
   },
   protocolText: {
-    flex: 1,
-    textAlign: 'right',
     color: colors.placeholder,
-    fontSize: 12,
+    fontSize: 13,
+    fontWeight: '600',
   },
   alertBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#450a0a',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.danger,
-    padding: 10,
-    marginBottom: 12,
+    padding: 12,
+    marginBottom: 16,
   },
   alertText: {
-    color: colors.danger,
+    color: '#fca5a5',
     fontSize: 14,
+    flex: 1,
   },
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 14,
+    marginBottom: 16,
   },
   chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 999,
+    backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -401,10 +455,28 @@ const styles = StyleSheet.create({
   },
   chipText: {
     color: colors.placeholder,
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: '600',
   },
   chipTextActive: {
     color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 60,
+  },
+  emptyText: {
+    color: colors.text,
+    fontSize: 18,
     fontWeight: '700',
+    marginTop: 16,
+  },
+  emptySubtext: {
+    color: colors.placeholder,
+    fontSize: 14,
+    marginTop: 8,
   },
 });
