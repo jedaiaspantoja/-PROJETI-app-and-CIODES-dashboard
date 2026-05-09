@@ -1,6 +1,8 @@
-﻿import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React from 'react';
+import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { TouchableOpacity, Alert, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import Login from './frontend/login';
 import Cadastro from './frontend/cadastro';
@@ -30,24 +32,45 @@ export default function App() {
       <Stack.Navigator
         id="RootStack"
         initialRouteName="Login"
-        screenOptions={{
+        screenOptions={({ navigation, route }) => ({
           headerStyle: { backgroundColor: '#0F172A' },
           headerTintColor: '#F9FAFB',
           headerTitleStyle: { fontWeight: '700' },
           headerShadowVisible: false,
           contentStyle: { backgroundColor: '#0F172A' },
-        }}
+          headerTitleAlign: 'center',
+          headerLeft: () => {
+            return navigation.canGoBack() ? (
+              <TouchableOpacity onPress={() => navigation.goBack()} style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}>
+                <MaterialCommunityIcons name="chevron-left" size={32} color="#F9FAFB" />
+              </TouchableOpacity>
+            ) : null;
+          },
+          headerRight: () => {
+            // Não mostrar perfil na tela de Login ou Cadastro se não quiser, mas a regra pediu em todas.
+            if (route.name === 'Login' || route.name === 'Cadastro') return null;
+            
+            return (
+              <TouchableOpacity 
+                onPress={() => Alert.alert('Perfil', 'Aqui entrará a tela de Perfil / Logout')} 
+                style={{ marginRight: 16 }}
+              >
+                <MaterialCommunityIcons name="account-circle" size={28} color="#2563EB" />
+              </TouchableOpacity>
+            );
+          }
+        })}
       >
         <Stack.Screen name="Login" component={Login} options={{ headerShown: false }} />
         <Stack.Screen name="Cadastro" component={Cadastro} options={{ title: 'Criar conta' }} />
-        <Stack.Screen name="Home" component={Home} options={{ headerShown: false }} />
-        <Stack.Screen name="ListaCasos" component={ListaCasos} options={{ title: 'Tipo de ocorrencia' }} />
-        <Stack.Screen name="TipoVitima" component={TipoVitima} options={{ title: 'Tipo de vitima' }} />
-        <Stack.Screen name="TutorialCaso" component={TutorialCaso} options={{ title: 'Orientacao' }} />
-        <Stack.Screen name="RegistroCasos" component={RegistroCasos} options={{ title: 'Historico' }} />
+        <Stack.Screen name="Home" component={Home} options={{ title: 'Início', headerShown: true }} />
+        <Stack.Screen name="ListaCasos" component={ListaCasos} options={{ title: 'Tipo de ocorrência' }} />
+        <Stack.Screen name="TipoVitima" component={TipoVitima} options={{ title: 'Tipo de vítima' }} />
+        <Stack.Screen name="TutorialCaso" component={TutorialCaso} options={{ title: 'Orientação' }} />
+        <Stack.Screen name="RegistroCasos" component={RegistroCasos} options={{ title: 'Histórico' }} />
         <Stack.Screen name="DetalheRegistro" component={DetalheRegistro} options={{ title: 'Detalhes' }} />
-        <Stack.Screen name="BombeiroDashboard" component={BombeiroDashboard} options={{ headerShown: false }} />
-        <Stack.Screen name="BombeiroDetalhe" component={BombeiroDetalhe} options={{ title: 'Ocorrencia' }} />
+        <Stack.Screen name="BombeiroDashboard" component={BombeiroDashboard} options={{ title: 'Dashboard CIODES', headerShown: true }} />
+        <Stack.Screen name="BombeiroDetalhe" component={BombeiroDetalhe} options={{ title: 'Ocorrência' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

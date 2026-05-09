@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,7 +9,10 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../../backend/connectors/postgre';
 import { getCurrentUser } from '../shared/authSession';
@@ -28,25 +31,30 @@ const colors = {
 
 const STATUS_FLOW = ['guarnicao_empenhada', 'em_deslocamento', 'em_atendimento', 'finalizada'];
 
+// Nova funcao para cores e icones dinamicos
+function getStatusStyle(statusRaw: string | null | undefined) {
+  const s = (statusRaw || '').toLowerCase();
+  switch (s) {
+    case 'guarnicao_empenhada': return { bg: '#7F1D1D', text: '#FECACA', icon: 'alert-circle-outline' };
+    case 'em_deslocamento': return { bg: '#78350F', text: '#FDE68A', icon: 'ambulance' };
+    case 'em_atendimento': return { bg: '#064E3B', text: '#A7F3D0', icon: 'medical-bag' };
+    case 'finalizada': return { bg: '#1F2937', text: '#D1D5DB', icon: 'check-circle-outline' };
+    case 'cancelada': return { bg: '#4C1D95', text: '#DDD6FE', icon: 'cancel' };
+    default: return { bg: '#172554', text: '#BFDBFE', icon: 'information-outline' };
+  }
+}
+
 function statusToLabel(statusRaw: string | null | undefined): string {
   const s = (statusRaw || '').toLowerCase();
   switch (s) {
-    case 'registrada':
-      return 'Registrada';
-    case 'recebida_ciodes':
-      return 'Recebida pelo CIODES';
-    case 'guarnicao_empenhada':
-      return 'Guarnicao empenhada';
-    case 'em_deslocamento':
-      return 'Em deslocamento';
-    case 'em_atendimento':
-      return 'Em atendimento';
-    case 'finalizada':
-      return 'Finalizada';
-    case 'cancelada':
-      return 'Cancelada';
-    default:
-      return 'Status nao definido';
+    case 'registrada': return 'Registrada';
+    case 'recebida_ciodes': return 'Recebida pelo CIODES';
+    case 'guarnicao_empenhada': return 'Empenhada';
+    case 'em_deslocamento': return 'Em deslocamento';
+    case 'em_atendimento': return 'Em atendimento';
+    case 'finalizada': return 'Finalizada';
+    case 'cancelada': return 'Cancelada';
+    default: return 'Status nao definido';
   }
 }
 
@@ -276,6 +284,11 @@ export default function BombeiroDetalhe() {
     }
   }
 
+  function handleDownloadPDF() {
+    Alert.alert('Download de PDF', 'A funcionalidade de baixar o relatório em PDF será implementada pelo julles.');
+  }
+
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -306,129 +319,219 @@ export default function BombeiroDetalhe() {
   const isFinalizada = (detalhe.status || '').toLowerCase() === 'finalizada';
   const hasCoords = detalhe.latitude != null && detalhe.longitude != null;
 
+  const styleInfo = getStatusStyle(detalhe.status);
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 32 }}>
-      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-        <Text style={{ color: colors.placeholder }}>Voltar</Text>
-      </TouchableOpacity>
-
-      <View style={styles.headerBlock}>
-        <View style={styles.statusPill}>
-          <Text style={styles.statusPillText}>{currentStatusLabel}</Text>
-        </View>
-        <Text style={styles.protocol}>{detalhe.protocolo}</Text>
-      </View>
-
-      <Text style={styles.title}>{tipo}</Text>
-      <Text style={styles.subtitle}>Vitima: {vitima}</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Localizacao</Text>
-        <Text style={styles.cardText}>{detalhe.endereco_texto || 'Endereco textual nao informado.'}</Text>
-        {hasCoords ? (
-          <>
-            <Text style={styles.cardLabel}>Coordenadas: {detalhe.latitude}, {detalhe.longitude}</Text>
-            <TouchableOpacity style={styles.buttonSecondary} onPress={handleOpenMaps}>
-              <Text style={styles.buttonSecondaryText}>Abrir rota</Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <Text style={styles.cardLabel}>Sem coordenadas registradas.</Text>
-        )}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Dados da ocorrencia</Text>
-        <InfoLine label="Tipo" value={tipo} />
-        <InfoLine label="Vitima" value={vitima} />
-        <InfoLine label="Aberta em" value={formatDateTime(detalhe.criada_em)} />
-        <InfoLine label="Solicitante" value={solicitante} />
-        {telefone ? (
-          <TouchableOpacity style={styles.callButton} onPress={handleCallSolicitante}>
-            <Text style={styles.callButtonText}>Ligar para solicitante</Text>
-          </TouchableOpacity>
-        ) : null}
-        {detalhe.descricao ? <Text style={[styles.cardText, { marginTop: 8 }]}>{detalhe.descricao}</Text> : null}
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.cardTitle}>Sinais vitais</Text>
-          <TouchableOpacity onPress={() => void loadSinaisVitais()}>
-            <Text style={styles.refreshText}>Atualizar</Text>
-          </TouchableOpacity>
-        </View>
-
-        {ultimaLeitura ? (
-          <>
-            <View style={styles.vitalsGrid}>
-              <VitalBox label="FC" value={formatNumber(ultimaLeitura.frequencia_cardiaca_bpm, ' bpm')} />
-              <VitalBox label="SpO2" value={formatNumber(ultimaLeitura.saturacao_spo2, '%')} />
-              <VitalBox label="Temp." value={formatNumber(ultimaLeitura.temperatura_c, ' C')} />
-            </View>
-            <Text style={styles.cardLabel}>Ultima leitura: {formatDateTime(ultimaLeitura.coletado_em)}</Text>
-          </>
-        ) : (
-          <Text style={styles.cardText}>Nenhuma leitura recebida do dispositivo ainda.</Text>
-        )}
-
-        {alertas.length > 0 ? (
-          <View style={{ marginTop: 12 }}>
-            {alertas.map((alerta) => (
-              <View key={alerta.id} style={styles.alertCard}>
-                <Text style={styles.alertTitle}>{String(alerta.nivel || '').toUpperCase()} - {alerta.tipo}</Text>
-                <Text style={styles.alertMessage}>{alerta.mensagem}</Text>
-                {alerta.instrucao ? <Text style={styles.alertInstruction}>{alerta.instrucao}</Text> : null}
-              </View>
-            ))}
-          </View>
-        ) : null}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Status do atendimento</Text>
-        {!isFinalizada ? (
-          <TouchableOpacity style={[styles.button, updatingStatus && { opacity: 0.7 }]} disabled={updatingStatus} onPress={handleNextStatus}>
-            <Text style={styles.buttonText}>Avancar para: {nextStatusLabel}</Text>
-          </TouchableOpacity>
-        ) : (
-          <Text style={[styles.cardText, { color: colors.success, fontWeight: '700' }]}>Ocorrencia finalizada</Text>
-        )}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Relato do atendimento</Text>
-        <TextInput
-          style={styles.textArea}
-          multiline
-          placeholder="Registre avaliacao, condutas, evolucao e observacoes do atendimento..."
-          placeholderTextColor={colors.placeholder}
-          value={novoRelato}
-          onChangeText={setNovoRelato}
-        />
-        <TouchableOpacity
-          style={[styles.button, (!novoRelato.trim() || savingRelato) && { opacity: 0.6 }]}
-          disabled={!novoRelato.trim() || savingRelato}
-          onPress={handleSalvarRelato}
-        >
-          <Text style={styles.buttonText}>{savingRelato ? 'Salvando...' : 'Salvar relato'}</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? 200 : 100 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <MaterialCommunityIcons name="arrow-left" size={20} color={colors.placeholder} style={{ marginRight: 4 }} />
+          <Text style={{ color: colors.placeholder, fontSize: 16, fontWeight: '600' }}>Voltar</Text>
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Historico de relatos</Text>
-        {relatos.length === 0 ? (
-          <Text style={styles.cardText}>Nenhum relato registrado.</Text>
-        ) : (
-          relatos.map((relato) => (
-            <View key={relato.id} style={styles.reportItem}>
-              <Text style={styles.cardLabel}>{formatDateTime(relato.criado_em)} - {relato.socorrista?.nome || 'Socorrista'}</Text>
-              <Text style={styles.cardText}>{relato.texto}</Text>
+        <View style={styles.headerBlock}>
+          <View style={[styles.statusPill, { backgroundColor: styleInfo.bg }]}>
+            <MaterialCommunityIcons name={styleInfo.icon as any} size={14} color={styleInfo.text} style={{ marginRight: 6 }} />
+            <Text style={[styles.statusPillText, { color: styleInfo.text }]}>{currentStatusLabel}</Text>
+          </View>
+          <Text style={styles.protocol}>#{detalhe.protocolo}</Text>
+        </View>
+
+        <Text style={styles.title}>{tipo}</Text>
+
+        <View style={styles.subtitleRow}>
+          <MaterialCommunityIcons name="account-alert" size={18} color={colors.placeholder} />
+          <Text style={styles.subtitle}>Vítima: {vitima}</Text>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="map-marker-radius" size={22} color={colors.primary} />
+            <Text style={styles.cardTitle}>Localização</Text>
+          </View>
+          <Text style={styles.cardText}>{detalhe.endereco_texto || 'Endereço textual não informado.'}</Text>
+          {hasCoords ? (
+            <>
+              <Text style={styles.cardLabel}>GPS: {detalhe.latitude}, {detalhe.longitude}</Text>
+              <TouchableOpacity style={styles.buttonSecondary} onPress={handleOpenMaps}>
+                <MaterialCommunityIcons name="navigation" size={18} color="#FFF" style={{ marginRight: 8 }} />
+                <Text style={styles.buttonSecondaryText}>Abrir no GPS</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <View style={styles.warningBox}>
+              <MaterialCommunityIcons name="alert" size={16} color={colors.warning} style={{ marginRight: 6 }} />
+              <Text style={[styles.cardLabel, { color: colors.warning, marginTop: 0 }]}>Sem coordenadas registradas.</Text>
             </View>
-          ))
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="clipboard-text-outline" size={22} color={colors.primary} />
+            <Text style={styles.cardTitle}>Dados da Ocorrência</Text>
+          </View>
+          <InfoLine label="Aberta em" value={formatDateTime(detalhe.criada_em)} />
+          <InfoLine label="Solicitante" value={solicitante} />
+          {telefone ? (
+            <TouchableOpacity style={styles.callButton} onPress={handleCallSolicitante}>
+              <MaterialCommunityIcons name="phone" size={16} color={colors.primary} style={{ marginRight: 8 }} />
+              <Text style={styles.callButtonText}>Ligar para o Solicitante</Text>
+            </TouchableOpacity>
+          ) : null}
+          {detalhe.descricao ? (
+            <View style={styles.descriptionBox}>
+              <Text style={styles.cardLabel}>Descrição original:</Text>
+              <Text style={[styles.cardText, { marginTop: 4, fontStyle: 'italic' }]}>"{detalhe.descricao}"</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.card}>
+          <View style={[styles.sectionHeader, { justifyContent: 'space-between', width: '100%' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <MaterialCommunityIcons name="heart-pulse" size={22} color={colors.danger} />
+              <Text style={styles.cardTitle}>Sensores Vitais</Text>
+            </View>
+            <TouchableOpacity onPress={() => void loadSinaisVitais()} style={{ padding: 4 }}>
+              <MaterialCommunityIcons name="refresh" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {ultimaLeitura ? (
+            <>
+              <View style={styles.vitalsGrid}>
+                <VitalBox label="FC" value={formatNumber(ultimaLeitura.frequencia_cardiaca_bpm, ' bpm')} icon="heart-pulse" color={colors.danger} />
+                <VitalBox label="SpO2" value={formatNumber(ultimaLeitura.saturacao_spo2, '%')} icon="water-percent" color="#3B82F6" />
+                <VitalBox label="Temp." value={formatNumber(ultimaLeitura.temperatura_c, ' °C')} icon="thermometer" color={colors.warning} />
+              </View>
+              <Text style={styles.cardLabel}>Última leitura: {formatDateTime(ultimaLeitura.coletado_em)}</Text>
+            </>
+          ) : (
+            <View style={styles.emptySensorsBox}>
+              <MaterialCommunityIcons name="wifi-off" size={24} color={colors.placeholder} style={{ marginBottom: 8 }} />
+              <Text style={[styles.cardText, { textAlign: 'center' }]}>Nenhum dado recebido. Conecte o dispositivo.</Text>
+            </View>
+          )}
+
+          {/* ESQUELETO PARA EQUIPE DE HARDWARE */}
+          <TouchableOpacity
+            style={styles.simulateButton}
+            onPress={() => {
+              Alert.alert(
+                "Integração do Arduino",
+                "Equipe de Hardware: Insira aqui a lógica Bluetooth.\n\nSimulando dados...",
+                [{
+                  text: "Simular Leitura", onPress: () => {
+                    setUltimaLeitura({
+                      frequencia_cardiaca_bpm: Math.floor(Math.random() * (120 - 70) + 70),
+                      saturacao_spo2: Math.floor(Math.random() * (100 - 90) + 90),
+                      temperatura_c: (Math.random() * (39 - 36) + 36).toFixed(1),
+                      coletado_em: new Date().toISOString()
+                    });
+                  }
+                }]
+              );
+            }}
+          >
+            <MaterialCommunityIcons name="bluetooth-connect" size={16} color="#FFF" style={{ marginRight: 6 }} />
+            <Text style={styles.buttonSecondaryText}>Conectar Sensores (Simulação)</Text>
+          </TouchableOpacity>
+
+          {alertas.length > 0 && (
+            <View style={{ marginTop: 16 }}>
+              {alertas.map((alerta) => (
+                <View key={alerta.id} style={styles.alertCard}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <MaterialCommunityIcons name="alert" size={16} color="#FECACA" style={{ marginRight: 6 }} />
+                    <Text style={styles.alertTitle}>{String(alerta.nivel || '').toUpperCase()} - {alerta.tipo}</Text>
+                  </View>
+                  <Text style={styles.alertMessage}>{alerta.mensagem}</Text>
+                  {alerta.instrucao ? <Text style={styles.alertInstruction}>Ação: {alerta.instrucao}</Text> : null}
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="progress-clock" size={22} color={colors.primary} />
+            <Text style={styles.cardTitle}>Controle da Ocorrência</Text>
+          </View>
+          {!isFinalizada ? (
+            <TouchableOpacity style={[styles.statusButton, updatingStatus && { opacity: 0.7 }]} disabled={updatingStatus} onPress={handleNextStatus}>
+              <Text style={styles.statusButtonText}>Avançar para: {nextStatusLabel}</Text>
+              <MaterialCommunityIcons name="chevron-double-right" size={20} color="#FFF" />
+            </TouchableOpacity>
+          ) : (
+            <>
+              <View style={styles.successBox}>
+                <MaterialCommunityIcons name="check-circle" size={20} color={colors.success} style={{ marginRight: 8 }} />
+                <Text style={[styles.cardText, { color: colors.success, fontWeight: '700' }]}>Ocorrência Finalizada</Text>
+              </View>
+              <TouchableOpacity style={styles.buttonSecondary} onPress={handleDownloadPDF}>
+                <MaterialCommunityIcons name="file-pdf-box" size={20} color="#FFF" style={{ marginRight: 8 }} />
+                <Text style={styles.buttonSecondaryText}>Baixar Relatório em PDF</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+
+        {!isFinalizada && (
+          <View style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <MaterialCommunityIcons name="pencil-box-outline" size={22} color={colors.primary} />
+              <Text style={styles.cardTitle}>Registrar Relato</Text>
+            </View>
+            <TextInput
+              style={styles.textArea}
+              multiline
+              placeholder="Descreva avaliação primária, condutas, e evolução da vítima..."
+              placeholderTextColor={colors.placeholder}
+              value={novoRelato}
+              onChangeText={setNovoRelato}
+            />
+            <TouchableOpacity
+              style={[styles.button, (!novoRelato.trim() || savingRelato) && { opacity: 0.6 }]}
+              disabled={!novoRelato.trim() || savingRelato}
+              onPress={handleSalvarRelato}
+            >
+              <Text style={styles.buttonText}>{savingRelato ? 'Salvando...' : 'Salvar Relato'}</Text>
+            </TouchableOpacity>
+          </View>
         )}
-      </View>
-    </ScrollView>
+
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="history" size={22} color={colors.primary} />
+            <Text style={styles.cardTitle}>Histórico de Relatos</Text>
+          </View>
+          {relatos.length === 0 ? (
+            <Text style={styles.cardLabel}>Nenhum relato registrado.</Text>
+          ) : (
+            relatos.map((relato) => (
+              <View key={relato.id} style={styles.reportItem}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                  <MaterialCommunityIcons name="account-clock-outline" size={14} color={colors.placeholder} style={{ marginRight: 4 }} />
+                  <Text style={styles.cardLabel}>{formatDateTime(relato.criado_em)} • {relato.socorrista?.nome || 'Socorrista'}</Text>
+                </View>
+                <Text style={styles.cardText}>{relato.texto}</Text>
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -441,9 +544,10 @@ function InfoLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-function VitalBox({ label, value }: { label: string; value: string }) {
+function VitalBox({ label, value, icon, color }: { label: string; value: string; icon: string; color: string }) {
   return (
     <View style={styles.vitalBox}>
+      <MaterialCommunityIcons name={icon as any} size={24} color={color} style={{ marginBottom: 4 }} />
       <Text style={styles.vitalLabel}>{label}</Text>
       <Text style={styles.vitalValue}>{value}</Text>
     </View>
@@ -464,159 +568,223 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   backButton: {
-    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   headerBlock: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
+    marginBottom: 12,
   },
   statusPill: {
-    backgroundColor: '#172554',
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   statusPillText: {
-    color: '#BFDBFE',
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '800',
+    textTransform: 'uppercase',
   },
   protocol: {
-    flex: 1,
     color: colors.placeholder,
-    fontSize: 12,
-    textAlign: 'right',
+    fontSize: 14,
+    fontWeight: '700',
   },
   title: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: '800',
     color: colors.text,
+  },
+  subtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    marginBottom: 24,
   },
   subtitle: {
     fontSize: 16,
-    color: colors.text,
-    marginTop: 4,
-    marginBottom: 16,
+    color: colors.placeholder,
+    marginLeft: 6,
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 14,
-    marginBottom: 14,
+    padding: 18,
+    marginBottom: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
+    marginBottom: 12,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: colors.text,
-    marginBottom: 8,
   },
   cardText: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.text,
+    lineHeight: 22,
   },
   cardLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.placeholder,
-    marginTop: 6,
+    marginTop: 4,
+  },
+  warningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#450a0a',
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 8,
+  },
+  descriptionBox: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   infoLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
-    paddingVertical: 5,
+    paddingVertical: 6,
   },
   infoLabel: {
     color: colors.placeholder,
-    fontSize: 13,
+    fontSize: 14,
   },
   infoValue: {
     flex: 1,
     color: colors.text,
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     textAlign: 'right',
   },
   vitalsGrid: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
+    marginBottom: 8,
   },
   vitalBox: {
     flex: 1,
-    minHeight: 70,
-    borderRadius: 8,
+    alignItems: 'center',
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: '#020617',
-    padding: 10,
-    justifyContent: 'center',
+    paddingVertical: 12,
   },
   vitalLabel: {
     color: colors.placeholder,
     fontSize: 12,
-    marginBottom: 4,
+    fontWeight: '600',
+    marginBottom: 2,
   },
   vitalValue: {
     color: colors.text,
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  emptySensorsBox: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    backgroundColor: '#020617',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 12,
+  },
+  simulateButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#4F46E5',
+    borderRadius: 8,
+    paddingVertical: 12,
+    marginTop: 8,
   },
   alertCard: {
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.danger,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.danger,
     backgroundColor: '#450A0A',
-    padding: 10,
+    padding: 12,
     marginTop: 8,
   },
   alertTitle: {
     color: '#FECACA',
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 4,
+    fontSize: 13,
+    fontWeight: '800',
   },
   alertMessage: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 14,
+    marginTop: 4,
   },
   alertInstruction: {
-    color: '#FECACA',
+    color: '#FCA5A5',
     fontSize: 13,
-    marginTop: 6,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
-  refreshText: {
-    color: colors.primary,
-    fontSize: 13,
-    fontWeight: '700',
+  statusButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  statusButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  successBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#064E3B',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.success,
   },
   button: {
-    marginTop: 8,
     backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 10,
     alignItems: 'center',
+    marginTop: 12,
   },
   buttonText: {
     color: '#FFF',
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
   },
   buttonSecondary: {
-    marginTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingVertical: 11,
-    alignItems: 'center',
+    paddingVertical: 12,
   },
   buttonSecondaryText: {
     color: '#FFFFFF',
@@ -624,33 +792,36 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   callButton: {
-    marginTop: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 12,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingVertical: 12,
   },
   callButtonText: {
     color: colors.primary,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
   },
   textArea: {
-    minHeight: 110,
-    borderRadius: 8,
+    minHeight: 120,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     color: colors.text,
     backgroundColor: '#020617',
     textAlignVertical: 'top',
+    fontSize: 15,
   },
   reportItem: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 10,
-    marginTop: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingBottom: 12,
+    marginTop: 12,
   },
 });
