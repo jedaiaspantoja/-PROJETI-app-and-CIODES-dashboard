@@ -8,12 +8,15 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Platform,
 } from 'react-native';
 import { FontAwesome6 } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { supabase } from '../../backend/connectors/postgre';
 import { cacheReferenceDataV2, executeOfflineSelect } from '../../backend/offline/offlineV2';
+import TopHeader from '../shared/TopHeader';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const colors = {
   background: '#0F172A',
@@ -217,6 +220,7 @@ export default function TutorialCaso({ route, navigation }: any) {
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const isRealEmergency = useMemo(() => inferIsRealEmergency(route?.params), [route?.params]);
   const guide = useMemo(() => getTrainingGuide(title, codigo), [title, codigo]);
@@ -387,6 +391,7 @@ export default function TutorialCaso({ route, navigation }: any) {
 
   return (
     <View style={styles.container}>
+      <TopHeader title={isRealEmergency ? 'Instruções' : 'Treinamento'} />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {isRealEmergency && (protocolo || ocorrenciaId) ? (
           <View style={styles.protocolBox}>
@@ -425,7 +430,7 @@ export default function TutorialCaso({ route, navigation }: any) {
         </View>
       </ScrollView>
 
-      <View style={styles.buttons}>
+      <View style={[styles.buttons, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <TouchableOpacity style={styles.secondaryButton} onPress={voltar}>
           <FontAwesome6 name="arrow-left" size={15} color={colors.secondary} />
           <Text style={styles.secondaryButtonText}>Voltar</Text>
@@ -446,8 +451,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingTop: 56,
-    paddingBottom: 18,
+    paddingTop: 16,
+    paddingBottom: 32,
   },
   center: {
     flex: 1,
@@ -549,8 +554,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 24,
+    paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.background,

@@ -8,10 +8,13 @@ import {
   Text,
   TouchableOpacity,
   View,
+  BackHandler,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../backend/connectors/postgre';
 import { getCurrentUser } from '../shared/authSession';
+import TopHeader from '../shared/TopHeader';
 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -162,7 +165,18 @@ export default function BombeiroDashboard({ navigation }: any) {
 
   useEffect(() => {
     void carregarOcorrencias();
-  }, []);
+
+    const backAction = () => {
+      Alert.alert('Sair', 'Deseja voltar para a tela de login?', [
+        { text: 'Não', style: 'cancel' },
+        { text: 'Sim', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Login' as never }] }) },
+      ]);
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [navigation]);
 
   useFocusEffect(
     useCallback(() => {
@@ -254,8 +268,10 @@ export default function BombeiroDashboard({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Minhas Ocorrências</Text>
-      <Text style={styles.subtitle}>Acompanhe os chamados atribuídos à sua viatura.</Text>
+      <TopHeader title="Dashboard CIODES" />
+      <View style={{ flex: 1, paddingHorizontal: 20 }}>
+        <Text style={[styles.title, { marginTop: 16 }]}>Minhas Ocorrências</Text>
+        <Text style={styles.subtitle}>Acompanhe os chamados atribuídos à sua viatura.</Text>
 
       {erroGuarnicao && (
         <View style={styles.alertBox}>
@@ -289,6 +305,7 @@ export default function BombeiroDashboard({ navigation }: any) {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}
         />
       )}
+      </View>
     </View>
   );
 }
@@ -305,8 +322,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingTop: 60,
-    paddingHorizontal: 20,
   },
   center: {
     flex: 1,

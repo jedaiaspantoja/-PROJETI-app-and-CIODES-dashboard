@@ -3,15 +3,15 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import TopHeader from '../shared/TopHeader';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../../backend/connectors/postgre';
@@ -322,22 +322,15 @@ export default function BombeiroDetalhe() {
   const styleInfo = getStatusStyle(detalhe.status);
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <ScrollView
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <TopHeader title="Detalhes da Ocorrência" />
+      <KeyboardAwareScrollView
         style={styles.container}
-        contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? 200 : 100 }}
+        contentContainerStyle={{ paddingBottom: 50 }}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+        enableOnAndroid={true}
+        extraScrollHeight={Platform.OS === 'ios' ? 50 : 100}
       >
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <MaterialCommunityIcons name="arrow-left" size={20} color={colors.placeholder} style={{ marginRight: 4 }} />
-          <Text style={{ color: colors.placeholder, fontSize: 16, fontWeight: '600' }}>Voltar</Text>
-        </TouchableOpacity>
-
         <View style={styles.headerBlock}>
           <View style={[styles.statusPill, { backgroundColor: styleInfo.bg }]}>
             <MaterialCommunityIcons name={styleInfo.icon as any} size={14} color={styleInfo.text} style={{ marginRight: 6 }} />
@@ -530,8 +523,8 @@ export default function BombeiroDetalhe() {
             ))
           )}
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 

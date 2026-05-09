@@ -1,17 +1,16 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { supabase } from '../../backend/connectors/postgre';
+import TopHeader from '../shared/TopHeader';
 
 const colors = {
   background: '#0F172A',
@@ -251,11 +250,13 @@ export default function Cadastro({ navigation, route }: CadastroProps) {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.select({ ios: 'padding', android: undefined })}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+    <View style={styles.container}>
+      <TopHeader title="Cadastro" />
+      <KeyboardAwareScrollView 
+        contentContainerStyle={styles.scrollContent} 
+        keyboardShouldPersistTaps="handled"
+        enableOnAndroid={true}
+      >
         <View style={styles.card}>
           <Text style={styles.title}>Criar conta</Text>
           <Text style={styles.subtitle}>
@@ -361,8 +362,8 @@ export default function Cadastro({ navigation, route }: CadastroProps) {
             <Text style={styles.secondaryButtonText}>Ja tenho conta, voltar para Login</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,6 +8,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  BackHandler,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import NetInfo from '@react-native-community/netinfo';
@@ -15,6 +16,7 @@ import * as Location from 'expo-location';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { supabase } from '../../backend/connectors/postgre';
 import { getCurrentUser } from '../shared/authSession';
+import TopHeader from '../shared/TopHeader';
 
 const colors = {
   background: '#0F172A',
@@ -89,11 +91,20 @@ export default function Home({ navigation }: any) {
     setLoadingRecent(false);
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      void carregarRecentes();
-    }, [carregarRecentes])
-  );
+  React.useEffect(() => {
+    void carregarRecentes();
+
+    const backAction = () => {
+      Alert.alert('Sair', 'Deseja voltar para a tela de login?', [
+        { text: 'Não', style: 'cancel' },
+        { text: 'Sim', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Login' as never }] }) },
+      ]);
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [carregarRecentes, navigation]);
 
   const handleTreinamento = () => {
     navigation.navigate('ListaCasos', {
@@ -170,7 +181,9 @@ export default function Home({ navigation }: any) {
   const handleVerOcorrencias = () => navigation.navigate('RegistroCasos');
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <TopHeader title="JedAI" />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>App do solicitante</Text>
       <Text style={styles.title}>Como podemos ajudar?</Text>
       <Text style={styles.subtitle}>Abra um chamado real em emergencia ou acesse treinamentos para se preparar.</Text>
@@ -224,14 +237,15 @@ export default function Home({ navigation }: any) {
           </TouchableOpacity>
         ))
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const getStyles = (c: typeof colors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: c.background },
-    content: { paddingTop: 72, paddingHorizontal: 20, paddingBottom: 32 },
+    content: { paddingTop: 20, paddingHorizontal: 20, paddingBottom: 32 },
     eyebrow: { color: c.primary, fontSize: 13, fontWeight: '700', marginBottom: 6 },
     title: { fontSize: 30, fontWeight: '800', color: c.text, marginBottom: 8 },
     subtitle: { fontSize: 15, color: c.secondary, marginBottom: 22, lineHeight: 21 },

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { supabase } from '../../backend/connectors/postgre';
 import { setCurrentUser } from '../shared/authSession';
 
@@ -118,7 +119,11 @@ export default function Login({ navigation }: Props) {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAwareScrollView 
+      style={styles.container} 
+      contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40, paddingTop: 60 }}
+      enableOnAndroid={true}
+    >
       <Text style={styles.title}>PROJETI</Text>
       <Text style={styles.subtitle}>
         {isSocorrista ? 'Acesso do Socorrista' : 'Acesso do Solicitante'}
@@ -171,7 +176,7 @@ export default function Login({ navigation }: Props) {
       <TouchableOpacity onPress={handleGoToCadastro} style={styles.linkButton}>
         <Text style={styles.linkText}>Não tem conta? Cadastre-se</Text>
       </TouchableOpacity>
-    </View>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -179,8 +184,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: 24,
-    paddingTop: 80,
   },
   title: {
     fontSize: 32,
