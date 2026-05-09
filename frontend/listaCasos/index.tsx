@@ -19,6 +19,26 @@ const colors = {
   placeholder: '#9CA3AF',
   primary: '#2563EB',
   border: '#334155',
+  success: '#22C55E',
+};
+
+type FlowMode = 'training' | 'real-online' | 'real-offline' | string;
+
+type ListaCasosParams = {
+  mode?: FlowMode;
+  userLocation?: unknown;
+  isTreinamento?: boolean;
+  dataOcorrenciaISO?: string;
+};
+
+type ListaCasosProps = {
+  navigation: {
+    navigate: (screen: 'TipoVitima', params: Record<string, unknown>) => void;
+    goBack: () => void;
+  };
+  route?: {
+    params?: ListaCasosParams;
+  };
 };
 
 type Caso = {
@@ -29,12 +49,84 @@ type Caso = {
   tutorialId: string | null;
 };
 
-export default function ListaCasos({ navigation, route }: any) {
-  const { mode, userLocation, isTreinamento, dataOcorrenciaISO } = route?.params || {};
+type TutorialRef = {
+  id: string;
+  ativo: boolean | null;
+};
+
+type TipoOcorrenciaRow = {
+  id: number;
+  codigo: string;
+  nome: string | null;
+  descricao: string | null;
+  tutoriais: TutorialRef[] | TutorialRef | null;
+};
+
+type IconName = React.ComponentProps<typeof FontAwesome6>['name'];
+
+type TrainingMeta = {
+  icon: IconName;
+  focus: string;
+  duration: string;
+};
+
+const trainingMeta: Record<string, TrainingMeta> = {
+  engasgo: {
+    icon: 'lungs',
+    focus: 'Reconhecer engasgo, pedir ajuda e aplicar manobras sem colocar a mão às cegas na boca.',
+    duration: '5 passos',
+  },
+  rcp: {
+    icon: 'heart-pulse',
+    focus: 'Verificar resposta e respiração, acionar suporte, iniciar compressões e usar DEA se disponível.',
+    duration: '5 passos',
+  },
+  afogamento: {
+    icon: 'water',
+    focus: 'Evitar risco ao socorrista, retirar com segurança, avaliar respiração e aquecer a vítima.',
+    duration: '5 passos',
+  },
+  convulsao: {
+    icon: 'brain',
+    focus: 'Proteger durante a crise, cronometrar a duração e reconhecer quando acionar emergência.',
+    duration: '5 passos',
+  },
+  trauma: {
+    icon: 'kit-medical',
+    focus: 'Controlar riscos da cena, evitar movimentação indevida e lidar com sangramento intenso.',
+    duration: '5 passos',
+  },
+};
+
+const defaultTrainingMeta: TrainingMeta = {
+  icon: 'hand-holding-medical',
+  focus: 'Treinar avaliação inicial, acionamento correto e acompanhamento seguro da vítima.',
+  duration: 'Treino guiado',
+};
+
+function getTrainingMeta(codigo: string): TrainingMeta {
+  return trainingMeta[codigo.toLowerCase()] || defaultTrainingMeta;
+}
+
+function resolveFlowMode(params: ListaCasosParams) {
+  const mode = params.mode || (params.isTreinamento ? 'training' : 'real-online');
+  const isModoReal = mode === 'real-online' || mode === 'real-offline';
+  const isTreinamento = mode === 'training' || (!isModoReal && params.isTreinamento === true);
+
+  return {
+    mode,
+    isModoReal,
+    isTreinamento,
+  };
+}
+
+export default function ListaCasos({ navigation, route }: ListaCasosProps) {
+  const params = route?.params || {};
+  const { mode, isModoReal, isTreinamento } = resolveFlowMode(params);
+  const { userLocation, dataOcorrenciaISO } = params;
+
   const [casos, setCasos] = useState<Caso[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const isModoReal = mode === 'real-online' || mode === 'real-offline';
 
   useEffect(() => {
     async function carregar() {
@@ -60,7 +152,13 @@ export default function ListaCasos({ navigation, route }: any) {
 
         if (error) {
           console.error('[ListaCasos] Erro Supabase:', error);
-          const offlineRows = await executeOfflineSelect<any>(
+          const offlineRows = await executeOfflineSelect<{
+            id: number;
+            codigo: string;
+            nome: string;
+            descricao: string | null;
+            tutorial_id: string | null;
+          }>(
             `SELECT o.id, o.codigo, o.nome, o.descricao, t.id AS tutorial_id
              FROM tipos_ocorrencia o
              LEFT JOIN tutoriais t ON t.tipo_ocorrencia_id = o.id AND t.ativo = 1
@@ -72,33 +170,34 @@ export default function ListaCasos({ navigation, route }: any) {
               id: item.id,
               codigo: item.codigo,
               title: item.nome,
-              description: item.descricao || 'Tutorial de atendimento pré-hospitalar.',
+              description: item.descricao || 'Tutorial de atendimento pre-hospitalar.',
               tutorialId: item.tutorial_id || null,
             }))
           );
           return;
         }
 
-        const mapped: Caso[] = ((data as any[]) || []).map((item) => {
+        const rows = (data || []) as TipoOcorrenciaRow[];
+        const mapped: Caso[] = rows.map((item) => {
           const tutorial = Array.isArray(item.tutoriais)
-            ? item.tutoriais.find((t: any) => t.ativo !== false) || item.tutoriais[0]
+            ? item.tutoriais.find((t) => t.ativo !== false) || item.tutoriais[0]
             : item.tutoriais;
 
           return {
             id: item.id,
             codigo: item.codigo,
-            title: item.nome || `Ocorrência #${item.id}`,
-            description: item.descricao || 'Tutorial de atendimento pré-hospitalar.',
+            title: item.nome || `Ocorrencia #${item.id}`,
+            description: item.descricao || 'Tutorial de atendimento pre-hospitalar.',
             tutorialId: tutorial?.id || null,
           };
         });
 
         setCasos(mapped);
         await cacheReferenceDataV2({
-          tiposOcorrencia: data || [],
-          tutoriais: ((data as any[]) || []).flatMap((item) =>
+          tiposOcorrencia: rows,
+          tutoriais: rows.flatMap((item) =>
             Array.isArray(item.tutoriais)
-              ? item.tutoriais.map((t: any) => ({
+              ? item.tutoriais.map((t) => ({
                   ...t,
                   titulo: item.nome,
                   descricao: item.descricao,
@@ -109,7 +208,7 @@ export default function ListaCasos({ navigation, route }: any) {
         });
       } catch (e) {
         console.error('[ListaCasos] Erro inesperado:', e);
-        Alert.alert('Erro', 'Não foi possível carregar os casos.');
+        Alert.alert('Erro', 'Nao foi possivel carregar os casos.');
       } finally {
         setLoading(false);
       }
@@ -129,44 +228,58 @@ export default function ListaCasos({ navigation, route }: any) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{isModoReal ? 'Selecione o caso da ocorrência' : 'Casos de Treinamento'}</Text>
+      <Text style={styles.title}>{isModoReal ? 'Selecione o caso da ocorrencia' : 'Treinamentos de APH'}</Text>
+      {!isModoReal ? (
+        <Text style={styles.intro}>Escolha uma situacao para praticar decisoes rapidas antes de uma emergencia real.</Text>
+      ) : null}
 
       {casos.length === 0 ? (
-        <Text style={{ color: colors.placeholder }}>Nenhum caso disponível.</Text>
+        <Text style={{ color: colors.placeholder }}>Nenhum caso disponivel.</Text>
       ) : (
         <FlatList
           data={casos}
           keyExtractor={(item) => String(item.id)}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.card}
-              activeOpacity={0.8}
-              onPress={() => {
-                if (!item.tutorialId) {
-                  Alert.alert('Tutorial indisponível', 'Este tipo de ocorrência ainda não possui tutorial.');
-                  return;
-                }
+          renderItem={({ item }) => {
+            const meta = getTrainingMeta(item.codigo);
+            return (
+              <TouchableOpacity
+                style={styles.card}
+                activeOpacity={0.84}
+                onPress={() => {
+                  if (!item.tutorialId) {
+                    Alert.alert('Tutorial indisponivel', 'Este tipo de ocorrencia ainda nao possui tutorial.');
+                    return;
+                  }
 
-                navigation.navigate('TipoVitima', {
-                  tutorialId: item.tutorialId,
-                  tipo_ocorrencia_id: item.id,
-                  title: item.title,
-                  description: item.description,
-                  mode,
-                  userLocation,
-                  isTreinamento,
-                  dataOcorrenciaISO,
-                });
-              }}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{item.title}</Text>
-                <Text style={styles.cardDescription}>{item.description}</Text>
-              </View>
+                  navigation.navigate('TipoVitima', {
+                    tutorialId: item.tutorialId,
+                    tipo_ocorrencia_id: item.id,
+                    codigo: item.codigo,
+                    title: item.title,
+                    description: item.description,
+                    mode,
+                    userLocation,
+                    isTreinamento,
+                    dataOcorrenciaISO,
+                  });
+                }}
+              >
+                <View style={styles.iconBox}>
+                  <FontAwesome6 name={meta.icon} size={20} color={colors.text} />
+                </View>
 
-              <FontAwesome6 name="chevron-right" size={18} color={colors.placeholder} />
-            </TouchableOpacity>
-          )}
+                <View style={{ flex: 1 }}>
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.cardTitle}>{item.title}</Text>
+                    {!isModoReal ? <Text style={styles.badge}>{meta.duration}</Text> : null}
+                  </View>
+                  <Text style={styles.cardDescription}>{isModoReal ? item.description : meta.focus}</Text>
+                </View>
+
+                <FontAwesome6 name="chevron-right" size={16} color={colors.placeholder} />
+              </TouchableOpacity>
+            );
+          }}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         />
       )}
@@ -183,38 +296,71 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingTop: 80,
-    paddingHorizontal: 24,
+    paddingTop: 72,
+    paddingHorizontal: 20,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: 27,
+    fontWeight: '800',
     color: colors.text,
-    marginBottom: 24,
+    marginBottom: 8,
+  },
+  intro: {
+    color: colors.placeholder,
+    fontSize: 15,
+    lineHeight: 21,
+    marginBottom: 20,
   },
   card: {
     flexDirection: 'row',
     backgroundColor: colors.card,
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
     alignItems: 'center',
     elevation: 5,
     borderWidth: 1,
     borderColor: colors.border,
+    gap: 12,
+  },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '800',
     color: colors.text,
+    flexShrink: 1,
+  },
+  badge: {
+    color: colors.success,
+    borderColor: colors.success,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    fontSize: 11,
+    fontWeight: '800',
   },
   cardDescription: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.placeholder,
-    marginTop: 4,
+    marginTop: 5,
+    lineHeight: 18,
   },
   backButton: {
     marginTop: 'auto',
-    marginBottom: 40,
+    marginBottom: 34,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

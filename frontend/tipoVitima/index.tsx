@@ -30,6 +30,7 @@ type UserLocation = {
 export default function TipoVitima({ route, navigation }: any) {
   const {
     tipo_ocorrencia_id,
+    codigo,
     title,
     description,
     mode,
@@ -139,22 +140,26 @@ export default function TipoVitima({ route, navigation }: any) {
       setSaving(true);
 
       let ocorrenciaId: string | null = null;
+      let protocolo: string | null = null;
       const isReal = mode === 'real-online' || mode === 'real-offline';
 
       if (isReal) {
         const created = await registrarOcorrencia(selected);
         if (!created) return;
         ocorrenciaId = created.id;
+        protocolo = created.protocolo || null;
       }
 
       navigation.navigate('TutorialCaso', {
         tutorialId,
         tipoVitimaId: selected.id,
         profile: selected.codigo,
+        codigo,
         title,
         mode,
         is_treinamento: mode === 'training' ? true : !!isTreinamento,
         ocorrenciaId,
+        protocolo,
       });
     } finally {
       setSaving(false);
@@ -295,3 +300,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+
+
+

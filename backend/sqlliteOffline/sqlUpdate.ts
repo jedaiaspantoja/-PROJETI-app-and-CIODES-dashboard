@@ -1,5 +1,5 @@
 // backend/sqlliteOffline/sqlUpdate.ts
-import { executeRun, executeSelect } from '../connectors/sqllite';
+import { executeRun } from '../connectors/sqllite';
 
 /**
  * Gera um id_oco local NEGATIVO para não colidir com ids do Supabase (identity positivo).
