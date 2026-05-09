@@ -11,6 +11,7 @@ import {
 import { FontAwesome6 } from '@expo/vector-icons';
 import { supabase } from '../../backend/connectors/postgre';
 import { cacheReferenceDataV2, executeOfflineSelect } from '../../backend/offline/offlineV2';
+import TopHeader from '../shared/TopHeader';
 
 const colors = {
   background: '#0F172A',
@@ -228,7 +229,9 @@ export default function ListaCasos({ navigation, route }: ListaCasosProps) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{isModoReal ? 'Selecione o caso da ocorrencia' : 'Treinamentos de APH'}</Text>
+      <TopHeader title={isModoReal ? 'Emergência' : 'Treinamento'} />
+      <View style={{ flex: 1, paddingHorizontal: 20 }}>
+        <Text style={[styles.title, { marginTop: 20 }]}>{isModoReal ? 'Selecione o caso da ocorrencia' : 'Treinamentos de APH'}</Text>
       {!isModoReal ? (
         <Text style={styles.intro}>Escolha uma situacao para praticar decisoes rapidas antes de uma emergencia real.</Text>
       ) : null}
@@ -282,12 +285,8 @@ export default function ListaCasos({ navigation, route }: ListaCasosProps) {
           }}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         />
-      )}
-
-      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-        <FontAwesome6 name="arrow-left" size={16} color={colors.placeholder} />
-        <Text style={styles.backButtonText}>Voltar</Text>
-      </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 }
@@ -296,8 +295,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingTop: 72,
-    paddingHorizontal: 20,
   },
   title: {
     fontSize: 27,

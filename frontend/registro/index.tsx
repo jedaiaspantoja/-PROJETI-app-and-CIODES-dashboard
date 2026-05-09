@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { supabase } from '../../backend/connectors/postgre';
 import { getCurrentUser } from '../shared/authSession';
+import TopHeader from '../shared/TopHeader';
 
 const colors = {
   background: '#0F172A',
@@ -157,8 +158,10 @@ export default function RegistroCasos({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Minhas ocorrencias</Text>
-      <Text style={styles.subtitle}>Acompanhe o andamento dos chamados abertos por voce.</Text>
+      <TopHeader title="Meus Registros" />
+      <View style={{ flex: 1, paddingHorizontal: 20 }}>
+        <Text style={[styles.title, { marginTop: 20 }]}>Minhas ocorrencias</Text>
+        <Text style={styles.subtitle}>Acompanhe o andamento dos chamados abertos por voce.</Text>
 
       {casos.length === 0 ? (
         <Text style={styles.emptyText}>Nenhuma ocorrencia registrada.</Text>
@@ -186,12 +189,13 @@ export default function RegistroCasos({ navigation }: any) {
           contentContainerStyle={{ paddingBottom: 28 }}
         />
       )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, paddingTop: 28, paddingHorizontal: 20 },
+  container: { flex: 1, backgroundColor: colors.background, paddingTop: 40 },
   center: { justifyContent: 'center', alignItems: 'center' },
   title: { fontSize: 26, fontWeight: '800', color: colors.text, marginBottom: 6 },
   subtitle: { fontSize: 14, color: colors.placeholder, marginBottom: 16 },
