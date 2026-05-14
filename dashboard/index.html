@@ -1,54 +1,248 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <title>CIODES - PROJETI</title>
+    <title>Painel de Saúde e População - PROJETI</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="styles.css?v=20260506-1" />
+    <link rel="stylesheet" href="styles.css?v=20260514-1" />
   </head>
 
   <body>
     <header class="topbar">
-      <div>
-        <h1>CIODES - Painel Operacional</h1>
-        <p class="topbar-subtitle">Despacho, empenho de viaturas e acompanhamento das ocorrências reais.</p>
+      <div class="topbar-copy">
+        <span class="eyebrow">Gestão pública de saúde</span>
+        <h1>Painel de Saúde e População</h1>
+        <p class="topbar-subtitle">
+          Monitoramento de ocorrências, equipes, viaturas e indicadores
+          operacionais de atendimento.
+        </p>
       </div>
       <div class="topbar-right">
         <div class="status-pill" id="realtime-status">
           <span class="dot dot-offline"></span>
           <span class="status-text">Desconectado</span>
         </div>
-        <button id="refresh-btn" class="btn btn-secondary">Recarregar</button>
+        <button id="refresh-btn" class="btn btn-primary" type="button">
+          Atualizar dados
+        </button>
       </div>
     </header>
 
     <main class="main">
-      <section class="summary">
-        <div class="metric"><span>Aguardando despacho</span><strong id="dispatch-count">-</strong></div>
-        <div class="metric"><span>Em andamento</span><strong id="progress-count">-</strong></div>
-        <div class="metric"><span>Viaturas disponíveis</span><strong id="available-count">-</strong></div>
-        <div class="metric"><span>Finalizadas hoje</span><strong id="closed-today-count">-</strong></div>
-        <div class="metric"><span>Última atualização</span><strong id="last-updated">-</strong></div>
+      <div
+        id="dashboard-message"
+        class="dashboard-message hidden"
+        role="status"
+      ></div>
+
+      <nav class="section-dock" aria-label="Áreas do painel">
+        <button
+          class="dock-item is-active"
+          type="button"
+          data-scroll-target="overview-section"
+        >
+          Visão geral
+        </button>
+        <button
+          class="dock-item"
+          type="button"
+          data-scroll-target="dispatch-section"
+        >
+          Despacho
+        </button>
+        <button
+          class="dock-item"
+          type="button"
+          data-scroll-target="progress-section"
+        >
+          Atendimento
+        </button>
+        <button
+          class="dock-item"
+          type="button"
+          data-scroll-target="history-section"
+        >
+          Histórico
+        </button>
+        <button
+          class="dock-item"
+          type="button"
+          data-scroll-target="management-section"
+        >
+          Equipes
+        </button>
+      </nav>
+
+      <section
+        id="summary-section"
+        class="summary dashboard-page-only"
+        aria-label="Indicadores principais"
+      >
+        <div class="metric metric-teal">
+          <span class="metric-icon">+</span>
+          <div>
+            <span>Aguardando despacho</span>
+            <strong id="dispatch-count">-</strong>
+            <small>Registros sem viatura empenhada</small>
+          </div>
+        </div>
+        <div class="metric metric-blue">
+          <span class="metric-icon">↗</span>
+          <div>
+            <span>Em andamento</span>
+            <strong id="progress-count">-</strong>
+            <small>Atendimentos ativos no território</small>
+          </div>
+        </div>
+        <div class="metric metric-cyan">
+          <span class="metric-icon">◌</span>
+          <div>
+            <span>Total de ocorrências</span>
+            <strong id="total-occurrences-count">-</strong>
+            <small>Base carregada do Supabase</small>
+          </div>
+        </div>
+        <div class="metric metric-green">
+          <span class="metric-icon">✓</span>
+          <div>
+            <span>Finalizadas hoje</span>
+            <strong id="closed-today-count">-</strong>
+            <small>Encerradas na data atual</small>
+          </div>
+        </div>
+        <div class="metric metric-indigo">
+          <span class="metric-icon">▣</span>
+          <div>
+            <span>Viaturas disponíveis</span>
+            <strong id="available-count">-</strong>
+            <small id="fleet-summary">Frota operacional</small>
+          </div>
+        </div>
+        <div class="metric metric-muted">
+          <span class="metric-icon">⟳</span>
+          <div>
+            <span>Última atualização</span>
+            <strong id="last-updated">-</strong>
+            <small id="people-summary">Dados em tempo real</small>
+          </div>
+        </div>
       </section>
 
-      <section class="toolbar">
-        <input id="search-input" class="search" placeholder="Buscar por protocolo, solicitante, tipo ou viatura" />
-        <select id="filter-status" class="select">
-          <option value="">Status: todos</option>
-          <option value="registrada">Registrada</option>
-          <option value="recebida_ciodes">Recebida pelo CIODES</option>
-          <option value="guarnicao_empenhada">Guarnição empenhada</option>
-          <option value="em_deslocamento">Em deslocamento</option>
-          <option value="em_atendimento">Em atendimento</option>
-          <option value="finalizada">Finalizada</option>
-        </select>
+      <section class="toolbar" aria-label="Filtros do painel">
+        <div class="toolbar-group">
+          <label for="search-input">Busca</label>
+          <input
+            id="search-input"
+            class="search"
+            placeholder="Buscar por protocolo, solicitante, tipo, local ou viatura"
+          />
+        </div>
+        <div class="toolbar-group toolbar-status">
+          <label for="filter-status">Status</label>
+          <select id="filter-status" class="select">
+            <option value="">Todos</option>
+            <option value="registrada">Registrada</option>
+            <option value="recebida_ciodes">Recebida pelo CIODES</option>
+            <option value="guarnicao_empenhada">Guarnição empenhada</option>
+            <option value="em_deslocamento">Em deslocamento</option>
+            <option value="em_atendimento">Em atendimento</option>
+            <option value="finalizada">Finalizada</option>
+            <option value="cancelada">Cancelada</option>
+          </select>
+        </div>
+        <div class="toolbar-actions">
+          <label for="page-size-select">Itens por página</label>
+          <select id="page-size-select" class="select">
+            <option value="8">8</option>
+            <option value="10" selected>10</option>
+            <option value="15">15</option>
+            <option value="25">25</option>
+          </select>
+        </div>
+        <button id="clear-filters-btn" class="btn btn-secondary" type="button">
+          Limpar filtros
+        </button>
       </section>
 
-      <section class="ops-grid">
+      <section
+        id="overview-section"
+        class="charts-grid dashboard-section"
+        aria-label="Gráficos do painel"
+      >
+        <div class="panel chart-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Distribuição por status</h2>
+              <span class="hint">Proporção dos registros carregados.</span>
+            </div>
+            <button
+              class="panel-popup-btn"
+              type="button"
+              data-popup-view="status"
+            >
+              Ver análise
+            </button>
+          </div>
+          <div class="chart-box"><canvas id="status-chart"></canvas></div>
+        </div>
+
+        <div class="panel chart-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Ocorrências por tipo</h2>
+              <span class="hint"
+                >Comparativo de categorias de atendimento.</span
+              >
+            </div>
+            <button
+              class="panel-popup-btn"
+              type="button"
+              data-popup-view="types"
+            >
+              Ver ranking
+            </button>
+          </div>
+          <div class="chart-box"><canvas id="type-chart"></canvas></div>
+        </div>
+
+        <div class="panel chart-panel chart-panel-wide">
+          <div class="panel-header">
+            <div>
+              <h2>Evolução mensal</h2>
+              <span class="hint"
+                >Registros agrupados pela data de criação.</span
+              >
+            </div>
+            <button
+              class="panel-popup-btn"
+              type="button"
+              data-popup-view="months"
+            >
+              Ver série
+            </button>
+          </div>
+          <div class="chart-box chart-box-wide">
+            <canvas id="month-chart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section id="dispatch-section" class="ops-grid dashboard-section">
         <div class="panel panel-large">
           <div class="panel-header">
-            <h2>Fila de despacho</h2>
-            <span class="hint">Ocorrências reais ainda sem viatura empenhada.</span>
+            <div>
+              <h2>Fila de despacho</h2>
+              <span class="hint"
+                >Ocorrências reais ainda sem viatura empenhada.</span
+              >
+            </div>
+            <button
+              class="panel-popup-btn"
+              type="button"
+              data-popup-view="dispatch"
+            >
+              Abrir lista
+            </button>
           </div>
           <div class="table-wrapper">
             <table>
@@ -63,24 +257,49 @@
                   <th>Ações</th>
                 </tr>
               </thead>
-              <tbody id="dispatch-body"><tr><td colspan="7" class="empty-row">Carregando...</td></tr></tbody>
+              <tbody id="dispatch-body">
+                <tr>
+                  <td colspan="7" class="empty-row">Carregando...</td>
+                </tr>
+              </tbody>
             </table>
           </div>
+          <div id="dispatch-pagination" class="pagination"></div>
         </div>
 
         <aside class="panel">
           <div class="panel-header">
-            <h2>Viaturas</h2>
-            <span class="hint">Guarnições disponíveis para empenho.</span>
+            <div>
+              <h2>Viaturas</h2>
+              <span class="hint">Guarnições disponíveis para empenho.</span>
+            </div>
+            <button
+              class="panel-popup-btn"
+              type="button"
+              data-popup-view="vehicles"
+            >
+              Ver frota
+            </button>
           </div>
           <div id="vehicle-board" class="vehicle-board"></div>
         </aside>
       </section>
 
-      <section class="panel">
+      <section id="progress-section" class="panel dashboard-section">
         <div class="panel-header">
-          <h2>Ocorrências em andamento</h2>
-          <span class="hint">Empenhadas, em deslocamento ou atendimento.</span>
+          <div>
+            <h2>Ocorrências em andamento</h2>
+            <span class="hint"
+              >Empenhadas, em deslocamento ou atendimento.</span
+            >
+          </div>
+          <button
+            class="panel-popup-btn"
+            type="button"
+            data-popup-view="progress"
+          >
+            Abrir lista
+          </button>
         </div>
         <div class="table-wrapper">
           <table>
@@ -96,15 +315,29 @@
                 <th>Ações</th>
               </tr>
             </thead>
-            <tbody id="progress-body"><tr><td colspan="8" class="empty-row">Carregando...</td></tr></tbody>
+            <tbody id="progress-body">
+              <tr>
+                <td colspan="8" class="empty-row">Carregando...</td>
+              </tr>
+            </tbody>
           </table>
         </div>
+        <div id="progress-pagination" class="pagination"></div>
       </section>
 
-      <section class="panel">
+      <section id="history-section" class="panel dashboard-section">
         <div class="panel-header">
-          <h2>Histórico finalizado</h2>
-          <span class="hint">Últimas ocorrências encerradas.</span>
+          <div>
+            <h2>Histórico finalizado</h2>
+            <span class="hint">Últimas ocorrências encerradas.</span>
+          </div>
+          <button
+            class="panel-popup-btn"
+            type="button"
+            data-popup-view="history"
+          >
+            Abrir histórico
+          </button>
         </div>
         <div class="table-wrapper">
           <table>
@@ -118,15 +351,31 @@
                 <th>Ações</th>
               </tr>
             </thead>
-            <tbody id="history-table-body"><tr><td colspan="6" class="empty-row">Carregando...</td></tr></tbody>
+            <tbody id="history-table-body">
+              <tr>
+                <td colspan="6" class="empty-row">Carregando...</td>
+              </tr>
+            </tbody>
           </table>
         </div>
+        <div id="history-pagination" class="pagination"></div>
       </section>
 
-      <section class="panel">
+      <section id="management-section" class="panel dashboard-section">
         <div class="panel-header">
-          <h2>Gestão de viaturas e equipe</h2>
-          <span class="hint">Cadastre viaturas e vincule socorristas à guarnição.</span>
+          <div>
+            <h2>Gestão de viaturas e equipe</h2>
+            <span class="hint"
+              >Cadastre viaturas e vincule socorristas à guarnição.</span
+            >
+          </div>
+          <button
+            class="panel-popup-btn"
+            type="button"
+            data-popup-view="management"
+          >
+            Abrir gestão
+          </button>
         </div>
         <div class="management-grid">
           <form id="form-guarnicao" class="form-block">
@@ -136,8 +385,13 @@
             <label>Prefixo</label>
             <input id="guarnicao-prefixo" placeholder="Ex: UR-001" />
             <label>Descrição</label>
-            <input id="guarnicao-descricao" placeholder="Equipe, base ou observação" />
-            <button class="btn btn-primary" type="submit">Salvar viatura</button>
+            <input
+              id="guarnicao-descricao"
+              placeholder="Equipe, base ou observação"
+            />
+            <button class="btn btn-primary" type="submit">
+              Salvar viatura
+            </button>
           </form>
 
           <form id="form-escala" class="form-block">
@@ -147,8 +401,13 @@
             <label>Socorrista</label>
             <select id="escala-bombeiro"></select>
             <label>Função</label>
-            <input id="escala-turno" placeholder="Socorrista, condutor, chefe" />
-            <button class="btn btn-primary" type="submit">Adicionar à equipe</button>
+            <input
+              id="escala-turno"
+              placeholder="Socorrista, condutor, chefe"
+            />
+            <button class="btn btn-primary" type="submit">
+              Adicionar à equipe
+            </button>
           </form>
         </div>
 
@@ -162,9 +421,14 @@
                 <th>Ações</th>
               </tr>
             </thead>
-            <tbody id="escala-body"><tr><td colspan="4" class="empty-row">Nenhum vínculo ativo.</td></tr></tbody>
+            <tbody id="escala-body">
+              <tr>
+                <td colspan="4" class="empty-row">Nenhum vínculo ativo.</td>
+              </tr>
+            </tbody>
           </table>
         </div>
+        <div id="escala-pagination" class="pagination"></div>
       </section>
     </main>
 
@@ -191,11 +455,35 @@
         <h3>Histórico da ocorrência</h3>
         <p id="history-id" class="modal-caption"></p>
         <ul id="history-list" class="history-list"></ul>
-        <div class="modal-actions"><button id="history-close" class="btn btn-secondary">Fechar</button></div>
+        <div class="modal-actions">
+          <button id="history-close" class="btn btn-secondary">Fechar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="insight-modal" class="modal modal-large hidden">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content insight-modal-content">
+        <div class="insight-modal-header">
+          <div>
+            <span id="insight-modal-kicker" class="eyebrow">Detalhamento</span>
+            <h3 id="insight-modal-title">Visão detalhada</h3>
+            <p id="insight-modal-subtitle" class="modal-caption"></p>
+          </div>
+          <button
+            id="insight-modal-close"
+            class="btn btn-secondary"
+            type="button"
+          >
+            Fechar
+          </button>
+        </div>
+        <div id="insight-modal-body" class="insight-modal-body"></div>
       </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=20260506-1" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js?v=20260514-1" defer></script>
   </body>
 </html>
