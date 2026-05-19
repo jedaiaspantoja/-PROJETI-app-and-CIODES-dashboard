@@ -16,6 +16,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../../backend/connectors/postgre';
 import { getCurrentUser } from '../shared/authSession';
+import RelatorioPDF from './RelatorioPDF';
 
 const colors = {
   background: '#0F172A',
@@ -91,6 +92,8 @@ export default function BombeiroDetalhe() {
   const [relatos, setRelatos] = useState<any[]>([]);
   const [novoRelato, setNovoRelato] = useState('');
   const [savingRelato, setSavingRelato] = useState(false);
+  const [showRelatorioPDF, setShowRelatorioPDF] = useState(false);
+  const user = getCurrentUser();
 
   const loadRelatos = useCallback(async () => {
     if (!ocorrenciaId) return;
@@ -285,7 +288,7 @@ export default function BombeiroDetalhe() {
   }
 
   function handleDownloadPDF() {
-    Alert.alert('Download de PDF', 'A funcionalidade de baixar o relatório em PDF será implementada pelo julles.');
+    setShowRelatorioPDF(true);
   }
 
 
@@ -474,7 +477,7 @@ export default function BombeiroDetalhe() {
               </View>
               <TouchableOpacity style={styles.buttonSecondary} onPress={handleDownloadPDF}>
                 <MaterialCommunityIcons name="file-pdf-box" size={20} color="#FFF" style={{ marginRight: 8 }} />
-                <Text style={styles.buttonSecondaryText}>Baixar Relatório em PDF</Text>
+                <Text style={styles.buttonSecondaryText}>Relatório</Text>
               </TouchableOpacity>
             </>
           )}
@@ -524,6 +527,13 @@ export default function BombeiroDetalhe() {
           )}
         </View>
       </KeyboardAwareScrollView>
+
+      <RelatorioPDF
+        visible={showRelatorioPDF}
+        onClose={() => setShowRelatorioPDF(false)}
+        ocorrencia={detalhe}
+        socorrista={user}
+      />
     </View>
   );
 }

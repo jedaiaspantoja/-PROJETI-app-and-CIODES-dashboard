@@ -24,3 +24,5 @@ build/
 Thumbs.db
 .vscode/
 .idea/
+
+litellm_config.yaml
