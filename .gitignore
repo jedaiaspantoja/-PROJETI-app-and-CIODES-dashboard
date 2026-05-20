@@ -25,4 +25,5 @@ Thumbs.db
 .vscode/
 .idea/
 
-litellm_config.yaml
+.claude/
+CLAUDE.md

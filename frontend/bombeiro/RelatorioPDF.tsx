@@ -9,7 +9,6 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  CheckBox,
   Platform,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -480,10 +479,9 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
         </html>
       `;
 
-      const result = await Print.printAsync({
+      const result = await Print.printToFileAsync({
         html: htmlContent,
         base64: false,
-        filename: `Relatorio_APH_${ocorrencia?.protocolo || 'SN'}_${Date.now()}`,
       });
 
       Alert.alert('Sucesso', 'Relatório gerado com sucesso!', [
@@ -494,7 +492,8 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
               if (await Sharing.isAvailableAsync()) {
                 await Sharing.shareAsync(result.uri, {
                   mimeType: 'application/pdf',
-                  filename: `Relatorio_APH_${ocorrencia?.protocolo || 'SN'}.pdf`,
+                  // Note: Sharing API on Expo doesn't support filename directly
+                  // The filename will be derived from the URI
                 });
               } else {
                 Alert.alert('Aviso', 'Compartilhamento não disponível neste dispositivo');
@@ -672,12 +671,16 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
             <Text style={styles.inputLabel}>Marque os sintomas observados:</Text>
             {commonSymptoms.map((symptom) => (
               <View key={symptom} style={styles.checkboxRow}>
-                <CheckBox
-                  value={formData.sintomas.includes(symptom)}
-                  onValueChange={() => toggleSymptom(symptom)}
-                  boxType="square"
-                  tintColors={{ true: colors.primary, false: colors.border }}
-                />
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => toggleSymptom(symptom)}
+                >
+                  <MaterialCommunityIcons
+                    name={formData.sintomas.includes(symptom) ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                    size={24}
+                    color={formData.sintomas.includes(symptom) ? colors.primary : colors.border}
+                  />
+                </TouchableOpacity>
                 <Text style={styles.checkboxLabel}>{symptom}</Text>
               </View>
             ))}
