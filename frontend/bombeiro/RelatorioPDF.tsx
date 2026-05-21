@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  FlatList,
   Modal,
   ScrollView,
   StyleSheet,
@@ -9,498 +8,194 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Platform,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-
-const colors = {
-  background: '#0F172A',
-  text: '#F9FAFB',
-  card: '#111827',
-  border: '#1F2937',
-  placeholder: '#9CA3AF',
-  primary: '#2563EB',
-  danger: '#EF4444',
-  success: '#22C55E',
-  warning: '#F59E0B',
-};
-
-// Sistema de Cores Manchester
-const manchesterColors = {
-  red: '#DC2626',      // Emergência
-  orange: '#EA580C',   // Muito Urgente
-  yellow: '#FCD34D',   // Urgente
-  green: '#10B981',    // Pouco Urgente
-  blue: '#3B82F6',     // Consulta
-};
-
-const manchesterProtocols = [
-  { id: 'red', label: 'Emergência', color: manchesterColors.red, description: 'Risco imediato à vida' },
-  { id: 'orange', label: 'Muito Urgente', color: manchesterColors.orange, description: 'Pode evoluir para risco' },
-  { id: 'yellow', label: 'Urgente', color: manchesterColors.yellow, description: 'Condição aguda mas estável' },
-  { id: 'green', label: 'Pouco Urgente', color: manchesterColors.green, description: 'Sintomas crônicos ou leves' },
-];
-
-const commonSymptoms = [
-  'Dor de cabeça',
-  'Desmaio',
-  'Sangramento',
-  'Fratura exposta',
-  'Queimadura',
-  'Falta de ar',
-  'Dor torácica',
-  'Alergia',
-  'Convulsão',
-  'Trauma múltiplo',
-];
-
-export type RelatorioData = {
-  // Triagem
-  triagem: string;
-  
-  // Dados da Vítima
-  nomeVitima: string;
-  idadeVitima: string;
-  contatoEmergencia: string;
-  
-  // Sinais Vitais
-  pa: string;
-  fc: string;
-  spo2: string;
-  temperatura: string;
-  
-  // Sintomas
-  sintomas: string[];
-  
-  // Conduta
-  conduta: string;
-};
+import { supabase } from '../../backend/connectors/postgre';
+import RelatorioPreview from './relatorio/RelatorioPreview';
+import { abcdeOptions, colors, conductOptions, manchesterProtocols, sections, symptomOptions } from './relatorio/relatorioConstants';
+import { buildRelatorioHtml } from './relatorio/relatorioHtml';
+import { FormularioStatus, RelatorioData, Section } from './relatorio/relatorioTypes';
+import {
+  buildReportPayload,
+  createInitialRelatorioData,
+  formatDateTime,
+  formatReverseAddress,
+  getAddressText,
+  getGpsText,
+  getProfissionalName,
+  getTriageInfo,
+  validateReport,
+} from './relatorio/relatorioUtils';
 
 interface RelatorioPDFProps {
   visible: boolean;
   onClose: () => void;
   ocorrencia: any;
   socorrista: any;
+  relatos?: any[];
 }
 
-export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista }: RelatorioPDFProps) {
-  const [section, setSection] = useState<'triagem' | 'vitima' | 'vitais' | 'sintomas' | 'conduta' | 'preview'>('triagem');
-  
-  const [formData, setFormData] = useState<RelatorioData>({
-    triagem: '',
-    nomeVitima: ocorrencia?.tipo_vitima?.nome || '',
-    idadeVitima: '',
-    contatoEmergencia: ocorrencia?.solicitante?.telefone || '',
-    pa: '',
-    fc: '',
-    spo2: '',
-    temperatura: '',
-    sintomas: [],
-    conduta: '',
-  });
+export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista, relatos = [] }: RelatorioPDFProps) {
+  const [section, setSection] = useState<Section>('triagem');
+  const [loadingSavedReport, setLoadingSavedReport] = useState(false);
+  const [savingReport, setSavingReport] = useState(false);
+  const [resolvingAddress, setResolvingAddress] = useState(false);
+  const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [formData, setFormData] = useState<RelatorioData>(() => createInitialRelatorioData(ocorrencia));
 
-  const [expandedSections, setExpandedSections] = useState({
-    vitima: false,
-    vitais: false,
-    sintomas: false,
-    conduta: false,
-  });
+  const triageInfo = useMemo(() => getTriageInfo(formData.triagem), [formData.triagem]);
+  const addressText = getAddressText(ocorrencia, resolvedAddress, resolvingAddress);
+  const gps = getGpsText(ocorrencia);
+  const profissional = getProfissionalName(socorrista);
 
-  const toggleSection = (sec: keyof typeof expandedSections) => {
-    setExpandedSections(prev => ({ ...prev, [sec]: !prev[sec] }));
-  };
+  useEffect(() => {
+    async function loadSavedReport() {
+      if (!visible || !ocorrencia?.id) return;
 
-  const toggleSymptom = (symptom: string) => {
-    setFormData(prev => ({
+      setLoadingSavedReport(true);
+      try {
+        const { data, error } = await supabase
+          .from('formularios_ocorrencia')
+          .select('dados_json, atualizado_em')
+          .eq('ocorrencia_id', ocorrencia.id)
+          .maybeSingle();
+
+        if (error) {
+          console.error('[RelatorioPDF] Erro ao carregar relatorio salvo:', error);
+          return;
+        }
+
+        const savedFormData = (data?.dados_json as any)?.formData;
+        if (savedFormData) {
+          setFormData((prev) => ({ ...prev, ...savedFormData }));
+          setLastSavedAt(data?.atualizado_em || null);
+        }
+      } finally {
+        setLoadingSavedReport(false);
+      }
+    }
+
+    void loadSavedReport();
+  }, [visible, ocorrencia?.id]);
+
+  useEffect(() => {
+    async function resolveAddressFromCoordinates() {
+      if (!visible || ocorrencia?.endereco_texto || ocorrencia?.latitude == null || ocorrencia?.longitude == null) return;
+
+      setResolvingAddress(true);
+      try {
+        const results = await Location.reverseGeocodeAsync({
+          latitude: Number(ocorrencia.latitude),
+          longitude: Number(ocorrencia.longitude),
+        });
+
+        const formattedAddress = results[0] ? formatReverseAddress(results[0]) : '';
+        setResolvedAddress(formattedAddress || null);
+      } catch (error) {
+        console.error('[RelatorioPDF] Erro ao converter coordenadas em endereco:', error);
+        setResolvedAddress(null);
+      } finally {
+        setResolvingAddress(false);
+      }
+    }
+
+    void resolveAddressFromCoordinates();
+  }, [visible, ocorrencia?.endereco_texto, ocorrencia?.latitude, ocorrencia?.longitude]);
+
+  function updateField<K extends keyof RelatorioData>(field: K, value: RelatorioData[K]) {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function toggleList(field: 'sintomas' | 'abcde' | 'condutas', value: string) {
+    setFormData((prev) => ({
       ...prev,
-      sintomas: prev.sintomas.includes(symptom)
-        ? prev.sintomas.filter(s => s !== symptom)
-        : [...prev.sintomas, symptom],
+      [field]: prev[field].includes(value)
+        ? prev[field].filter((item) => item !== value)
+        : [...prev[field], value],
     }));
-  };
+  }
 
-  const handleNext = () => {
-    const sections: Array<'triagem' | 'vitima' | 'vitais' | 'sintomas' | 'conduta' | 'preview'> = ['triagem', 'vitima', 'vitais', 'sintomas', 'conduta', 'preview'];
+  function goNext() {
     const currentIdx = sections.indexOf(section);
-    if (currentIdx < sections.length - 1) {
-      setSection(sections[currentIdx + 1]);
-    }
-  };
+    if (currentIdx < sections.length - 1) setSection(sections[currentIdx + 1]);
+  }
 
-  const handlePrevious = () => {
-    const sections: Array<'triagem' | 'vitima' | 'vitais' | 'sintomas' | 'conduta' | 'preview'> = ['triagem', 'vitima', 'vitais', 'sintomas', 'conduta', 'preview'];
+  function goPrevious() {
     const currentIdx = sections.indexOf(section);
-    if (currentIdx > 0) {
-      setSection(sections[currentIdx - 1]);
+    if (currentIdx > 0) setSection(sections[currentIdx - 1]);
+  }
+
+  async function saveReport(status: FormularioStatus, options?: { silent?: boolean }) {
+    if (!ocorrencia?.id) {
+      Alert.alert('Erro', 'Nao foi possivel identificar a ocorrencia para salvar o relatorio.');
+      return false;
     }
-  };
 
-  const getTriagemInfo = (triagem: string) => {
-    const map: Record<string, { label: string; cor: string; tempo: string }> = {
-      red: { label: 'EMERGÊNCIA', cor: '#DC2626', tempo: 'ATENDIMENTO IMEDIATO' },
-      orange: { label: 'MUITO URGENTE', cor: '#EA580C', tempo: 'ATENDIMENTO EM ATÉ 10 MIN' },
-      yellow: { label: 'URGENTE', cor: '#F59E0B', tempo: 'ATENDIMENTO EM ATÉ 30 MIN' },
-      green: { label: 'POUCO URGENTE', cor: '#10B981', tempo: 'ATENDIMENTO EM ATÉ 120 MIN' },
-    };
-    return map[triagem] || map.yellow;
-  };
-
-  const generatePDF = async () => {
+    setSavingReport(true);
     try {
-      const now = new Date();
-      const dateStr = now.toLocaleDateString('pt-BR');
-      const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      const triageInfo = getTriagemInfo(formData.triagem);
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from('formularios_ocorrencia')
+        .upsert(
+          {
+            ocorrencia_id: ocorrencia.id,
+            status,
+            dados_json: buildReportPayload({ status, formData, ocorrencia, relatos, resolvedAddress }),
+            gerado_por: socorrista?.id || null,
+            atualizado_em: now,
+          },
+          { onConflict: 'ocorrencia_id' }
+        );
 
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8" />
-          <title>Relatório APH - ${ocorrencia?.protocolo}</title>
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body {
-              font-family: 'Arial', sans-serif;
-              color: #000;
-              background: #fff;
-              line-height: 1.4;
-            }
-            .container {
-              width: 210mm;
-              height: 297mm;
-              margin: 0 auto;
-              padding: 0;
-              background: white;
-              position: relative;
-            }
-            
-            /* FAIXA DE GRAVIDADE NO TOPO */
-            .severity-bar {
-              width: 100%;
-              background-color: ${triageInfo.cor};
-              color: white;
-              padding: 12px 20px;
-              font-size: 18px;
-              font-weight: bold;
-              text-align: center;
-              letter-spacing: 1px;
-            }
-            
-            .severity-time {
-              font-size: 14px;
-              margin-top: 4px;
-              font-weight: normal;
-              letter-spacing: 0.5px;
-            }
-            
-            /* CABEÇALHO */
-            .header {
-              padding: 20px;
-              border-bottom: 3px solid #000;
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
-            }
-            
-            .header-left {
-              flex: 1;
-            }
-            
-            .institution-name {
-              font-size: 16px;
-              font-weight: bold;
-              margin-bottom: 4px;
-            }
-            
-            .document-title {
-              font-size: 12px;
-              font-weight: bold;
-              margin-bottom: 8px;
-              text-transform: uppercase;
-            }
-            
-            .header-right {
-              text-align: right;
-              font-size: 10px;
-              line-height: 1.6;
-            }
-            
-            .protocol-number {
-              font-size: 14px;
-              font-weight: bold;
-              margin-top: 8px;
-            }
-            
-            /* LINHA DE INFORMAÇÕES */
-            .info-line {
-              display: flex;
-              font-size: 10px;
-              margin: 2px 0;
-            }
-            
-            .info-label {
-              font-weight: bold;
-              width: 100px;
-              margin-right: 10px;
-            }
-            
-            .info-value {
-              flex: 1;
-              border-bottom: 1px dotted #000;
-            }
-            
-            /* SEÇÕES */
-            .section {
-              padding: 15px 20px;
-              border-bottom: 1px solid #ccc;
-            }
-            
-            .section-title {
-              font-size: 11px;
-              font-weight: bold;
-              text-transform: uppercase;
-              margin-bottom: 8px;
-              padding-bottom: 4px;
-              border-bottom: 2px solid #000;
-              letter-spacing: 0.5px;
-            }
-            
-            /* DUAS COLUNAS */
-            .two-columns {
-              display: flex;
-              gap: 20px;
-            }
-            
-            .column {
-              flex: 1;
-            }
-            
-            /* TABELA DE SINAIS VITAIS */
-            .vitals-table {
-              width: 100%;
-              border-collapse: collapse;
-              font-size: 11px;
-              margin-top: 6px;
-            }
-            
-            .vitals-table td {
-              border: 1px solid #000;
-              padding: 6px 8px;
-              text-align: left;
-            }
-            
-            .vitals-label {
-              font-weight: bold;
-              width: 45%;
-              background-color: #f0f0f0;
-            }
-            
-            .vitals-value {
-              font-weight: bold;
-              width: 55%;
-            }
-            
-            /* DADOS DA VÍTIMA */
-            .victim-data {
-              font-size: 10px;
-              margin-top: 6px;
-            }
-            
-            /* SINTOMAS */
-            .symptoms-box {
-              font-size: 10px;
-              margin-top: 6px;
-              padding: 8px;
-              border: 1px solid #000;
-              min-height: 40px;
-              line-height: 1.5;
-            }
-            
-            /* CONDUTA */
-            .conduct-box {
-              font-size: 10px;
-              margin-top: 6px;
-              padding: 8px;
-              border: 1px solid #000;
-              min-height: 60px;
-              line-height: 1.5;
-              white-space: pre-wrap;
-              word-wrap: break-word;
-            }
-            
-            /* RODAPÉ */
-            .footer {
-              position: absolute;
-              bottom: 0;
-              width: 100%;
-              padding: 15px 20px;
-              font-size: 8px;
-              border-top: 1px solid #ccc;
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-            }
-            
-            .signature-area {
-              display: flex;
-              gap: 40px;
-              margin-top: 30px;
-              font-size: 9px;
-            }
-            
-            .signature-line {
-              border-top: 1px solid #000;
-              width: 120px;
-              text-align: center;
-              padding-top: 4px;
-              line-height: 1.3;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <!-- FAIXA DE GRAVIDADE -->
-            <div class="severity-bar">
-              ${triageInfo.label}
-              <div class="severity-time">${triageInfo.tempo}</div>
-            </div>
-            
-            <!-- CABEÇALHO -->
-            <div class="header">
-              <div class="header-left">
-                <div class="institution-name">PROJETI - SISTEMA DE APH</div>
-                <div class="document-title">Relatório de Atendimento Pré-Hospitalar</div>
-              </div>
-              <div class="header-right">
-                <div><strong>Data:</strong> ${dateStr}</div>
-                <div><strong>Hora:</strong> ${timeStr}</div>
-                <div class="protocol-number">Protocolo: #${ocorrencia?.protocolo || 'N/A'}</div>
-              </div>
-            </div>
-            
-            <!-- DADOS DA OCORRÊNCIA E PROFISSIONAL -->
-            <div class="section">
-              <div class="section-title">Identificação</div>
-              <div class="info-line">
-                <div class="info-label">Profissional:</div>
-                <div class="info-value">${socorrista?.email || 'Não identificado'}</div>
-              </div>
-              <div class="info-line">
-                <div class="info-label">Local:</div>
-                <div class="info-value">${ocorrencia?.endereco_texto || 'Não informado'}</div>
-              </div>
-              <div class="info-line">
-                <div class="info-label">Localização GPS:</div>
-                <div class="info-value">${ocorrencia?.latitude && ocorrencia?.longitude ? `${ocorrencia.latitude}, ${ocorrencia.longitude}` : 'Não registrado'}</div>
-              </div>
-              <div class="info-line">
-                <div class="info-label">Tipo de Ocorrência:</div>
-                <div class="info-value">${ocorrencia?.tipo_ocorrencia?.nome || 'Não especificado'}</div>
-              </div>
-            </div>
-            
-            <!-- DADOS DA VÍTIMA E SINAIS VITAIS -->
-            <div class="section">
-              <div class="section-title">Dados Clínicos</div>
-              <div class="two-columns">
-                <div class="column">
-                  <strong style="font-size: 10px;">DADOS DA VÍTIMA</strong>
-                  <div class="victim-data">
-                    <div><strong>Nome/Tipo:</strong> ${formData.nomeVitima || 'Não informado'}</div>
-                    <div><strong>Idade:</strong> ${formData.idadeVitima || 'N/A'} anos</div>
-                    <div><strong>Contato Emergência:</strong> ${formData.contatoEmergencia || 'N/A'}</div>
-                  </div>
-                </div>
-                <div class="column">
-                  <strong style="font-size: 10px;">SINAIS VITAIS</strong>
-                  <table class="vitals-table">
-                    <tr>
-                      <td class="vitals-label">Pressão Arterial (PA)</td>
-                      <td class="vitals-value">${formData.pa || '-'} mmHg</td>
-                    </tr>
-                    <tr>
-                      <td class="vitals-label">Frequência Cardíaca (FC)</td>
-                      <td class="vitals-value">${formData.fc || '-'} bpm</td>
-                    </tr>
-                    <tr>
-                      <td class="vitals-label">Saturação O₂ (SpO₂)</td>
-                      <td class="vitals-value">${formData.spo2 || '-'} %</td>
-                    </tr>
-                    <tr>
-                      <td class="vitals-label">Temperatura (T)</td>
-                      <td class="vitals-value">${formData.temperatura || '-'} °C</td>
-                    </tr>
-                  </table>
-                </div>
-              </div>
-            </div>
-            
-            <!-- AVALIAÇÃO CLÍNICA -->
-            <div class="section">
-              <div class="section-title">Avaliação Clínica</div>
-              <strong style="font-size: 10px;">Sintomas Observados:</strong>
-              <div class="symptoms-box">
-                ${formData.sintomas.length > 0 
-                  ? formData.sintomas.map((s, i) => `${i > 0 ? ' • ' : ''}${s}`).join('')
-                  : 'Nenhum sintoma específico marcado'}
-              </div>
-            </div>
-            
-            <!-- CONDUTA ADOTADA -->
-            <div class="section">
-              <div class="section-title">Conduta e Evolução</div>
-              <div class="conduct-box">${formData.conduta || '(Nenhuma conduta registrada)'}</div>
-            </div>
-            
-            <!-- ASSINATURA -->
-            <div style="padding: 20px; margin-bottom: 80px;">
-              <div class="signature-area">
-                <div class="signature-line">
-                  <strong>${socorrista?.email || 'Profissional'}</strong><br>
-                  Assinatura do Socorrista
-                </div>
-                <div class="signature-line">
-                  ${dateStr}<br>
-                  Data e Hora
-                </div>
-              </div>
-            </div>
-            
-            <!-- RODAPÉ -->
-            <div class="footer">
-              <div>Documento gerado automaticamente pelo sistema PROJETI</div>
-              <div style="text-align: right;">Informação confidencial - Protegida por lei de sigilo médico</div>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
+      if (error) {
+        console.error('[RelatorioPDF] Erro ao salvar relatorio:', error);
+        Alert.alert('Erro', 'Nao foi possivel salvar o relatorio no banco.');
+        return false;
+      }
 
-      const result = await Print.printToFileAsync({
-        html: htmlContent,
-        base64: false,
+      setLastSavedAt(now);
+      if (!options?.silent) {
+        Alert.alert('Salvo', status === 'gerado' ? 'Relatorio salvo como gerado.' : 'Rascunho do relatorio salvo.');
+      }
+      return true;
+    } finally {
+      setSavingReport(false);
+    }
+  }
+
+  async function generatePDF() {
+    const validationError = validateReport(formData, ocorrencia);
+    if (validationError) {
+      Alert.alert('Relatorio incompleto', validationError);
+      return;
+    }
+
+    try {
+      const htmlContent = buildRelatorioHtml({
+        formData,
+        ocorrencia,
+        socorrista,
+        relatos,
+        triageInfo,
+        addressText,
+        gps,
+        profissional,
       });
+      const result = await Print.printToFileAsync({ html: htmlContent, base64: false });
+      const saved = await saveReport('gerado', { silent: true });
 
-      Alert.alert('Sucesso', 'Relatório gerado com sucesso!', [
+      Alert.alert('Sucesso', saved ? 'Relatorio gerado e salvo com sucesso.' : 'PDF gerado, mas o relatorio nao foi salvo.', [
         {
           text: 'Compartilhar',
           onPress: async () => {
-            try {
-              if (await Sharing.isAvailableAsync()) {
-                await Sharing.shareAsync(result.uri, {
-                  mimeType: 'application/pdf',
-                  // Note: Sharing API on Expo doesn't support filename directly
-                  // The filename will be derived from the URI
-                });
-              } else {
-                Alert.alert('Aviso', 'Compartilhamento não disponível neste dispositivo');
-              }
-            } catch (e) {
-              console.error('Erro ao compartilhar:', e);
-              Alert.alert('Erro', 'Não foi possível compartilhar o documento');
+            if (await Sharing.isAvailableAsync()) {
+              await Sharing.shareAsync(result.uri, { mimeType: 'application/pdf' });
+            } else {
+              Alert.alert('Aviso', 'Compartilhamento nao disponivel neste dispositivo.');
             }
           },
         },
@@ -508,327 +203,134 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
       ]);
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
-      Alert.alert('Erro', 'Não foi possível gerar o relatório');
+      Alert.alert('Erro', 'Nao foi possivel gerar o relatorio.');
     }
-  };
+  }
 
-  const renderTriagemSection = () => (
-    <ScrollView style={styles.sectionContent}>
-      <Text style={styles.sectionTitle}>Selecione o Nível de Triagem</Text>
-      <Text style={styles.sectionSubtitle}>Protocolo de Manchester - Classificação de Risco</Text>
-      
-      {manchesterProtocols.map((protocol) => (
-        <TouchableOpacity
-          key={protocol.id}
-          style={[
-            styles.triagemCard,
-            { borderLeftColor: protocol.color },
-            formData.triagem === protocol.id && styles.triagemCardSelected,
-          ]}
-          onPress={() => setFormData(prev => ({ ...prev, triagem: protocol.id }))}
-        >
-          <View style={[styles.triagemDot, { backgroundColor: protocol.color }]} />
-          <View style={styles.triagemContent}>
-            <Text style={styles.triagemLabel}>{protocol.label}</Text>
-            <Text style={styles.triagemDescription}>{protocol.description}</Text>
-          </View>
-          {formData.triagem === protocol.id && (
-            <MaterialCommunityIcons name="check-circle" size={24} color={protocol.color} />
-          )}
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  );
-
-  const renderVitimaSection = () => (
-    <ScrollView style={styles.sectionContent}>
-      <View style={styles.accordion}>
-        <TouchableOpacity
-          style={styles.accordionHeader}
-          onPress={() => toggleSection('vitima')}
-        >
-          <Text style={styles.accordionTitle}>Dados da Vítima</Text>
-          <MaterialCommunityIcons
-            name={expandedSections.vitima ? 'chevron-up' : 'chevron-down'}
-            size={24}
-            color={colors.primary}
-          />
-        </TouchableOpacity>
-        
-        {expandedSections.vitima && (
-          <View style={styles.accordionContent}>
-            <Text style={styles.inputLabel}>Nome da Vítima</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Digite o nome"
-              placeholderTextColor={colors.placeholder}
-              value={formData.nomeVitima}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, nomeVitima: text }))}
-            />
-            
-            <Text style={styles.inputLabel}>Idade (anos)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Digite a idade"
-              placeholderTextColor={colors.placeholder}
-              keyboardType="numeric"
-              value={formData.idadeVitima}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, idadeVitima: text }))}
-            />
-            
-            <Text style={styles.inputLabel}>Contato de Emergência</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Telefone ou email"
-              placeholderTextColor={colors.placeholder}
-              value={formData.contatoEmergencia}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, contatoEmergencia: text }))}
-            />
-          </View>
-        )}
-      </View>
-    </ScrollView>
-  );
-
-  const renderVitaisSection = () => (
-    <ScrollView style={styles.sectionContent}>
-      <View style={styles.accordion}>
-        <TouchableOpacity
-          style={styles.accordionHeader}
-          onPress={() => toggleSection('vitais')}
-        >
-          <Text style={styles.accordionTitle}>Sinais Vitais</Text>
-          <MaterialCommunityIcons
-            name={expandedSections.vitais ? 'chevron-up' : 'chevron-down'}
-            size={24}
-            color={colors.primary}
-          />
-        </TouchableOpacity>
-        
-        {expandedSections.vitais && (
-          <View style={styles.accordionContent}>
-            <Text style={styles.inputLabel}>PA - Pressão Arterial (ex: 120/80)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ex: 120/80 mmHg"
-              placeholderTextColor={colors.placeholder}
-              value={formData.pa}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, pa: text }))}
-            />
-            
-            <Text style={styles.inputLabel}>FC - Frequência Cardíaca (bpm)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Batimentos por minuto"
-              placeholderTextColor={colors.placeholder}
-              keyboardType="numeric"
-              value={formData.fc}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, fc: text }))}
-            />
-            
-            <Text style={styles.inputLabel}>SpO₂ - Saturação de Oxigênio (%)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Percentual"
-              placeholderTextColor={colors.placeholder}
-              keyboardType="numeric"
-              value={formData.spo2}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, spo2: text }))}
-            />
-            
-            <Text style={styles.inputLabel}>Temperatura (°C)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ex: 37.5"
-              placeholderTextColor={colors.placeholder}
-              keyboardType="decimal-pad"
-              value={formData.temperatura}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, temperatura: text }))}
-            />
-          </View>
-        )}
-      </View>
-    </ScrollView>
-  );
-
-  const renderSintomasSection = () => (
-    <ScrollView style={styles.sectionContent}>
-      <View style={styles.accordion}>
-        <TouchableOpacity
-          style={styles.accordionHeader}
-          onPress={() => toggleSection('sintomas')}
-        >
-          <Text style={styles.accordionTitle}>Sintomas Observados</Text>
-          <MaterialCommunityIcons
-            name={expandedSections.sintomas ? 'chevron-up' : 'chevron-down'}
-            size={24}
-            color={colors.primary}
-          />
-        </TouchableOpacity>
-        
-        {expandedSections.sintomas && (
-          <View style={styles.accordionContent}>
-            <Text style={styles.inputLabel}>Marque os sintomas observados:</Text>
-            {commonSymptoms.map((symptom) => (
-              <View key={symptom} style={styles.checkboxRow}>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => toggleSymptom(symptom)}
-                >
-                  <MaterialCommunityIcons
-                    name={formData.sintomas.includes(symptom) ? 'checkbox-marked' : 'checkbox-blank-outline'}
-                    size={24}
-                    color={formData.sintomas.includes(symptom) ? colors.primary : colors.border}
-                  />
-                </TouchableOpacity>
-                <Text style={styles.checkboxLabel}>{symptom}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
-    </ScrollView>
-  );
-
-  const renderCondutaSection = () => (
-    <ScrollView style={styles.sectionContent}>
-      <View style={styles.accordion}>
-        <TouchableOpacity
-          style={styles.accordionHeader}
-          onPress={() => toggleSection('conduta')}
-        >
-          <Text style={styles.accordionTitle}>Conduta Adotada</Text>
-          <MaterialCommunityIcons
-            name={expandedSections.conduta ? 'chevron-up' : 'chevron-down'}
-            size={24}
-            color={colors.primary}
-          />
-        </TouchableOpacity>
-        
-        {expandedSections.conduta && (
-          <View style={styles.accordionContent}>
-            <Text style={styles.inputLabel}>Descreva a conduta adotada</Text>
-            <TextInput
-              style={[styles.input, { minHeight: 150 }]}
-              placeholder="Ex: Aplicado torniquete membro inferior direito, elevado membro, aguardando SAMU..."
-              placeholderTextColor={colors.placeholder}
-              multiline
-              textAlignVertical="top"
-              value={formData.conduta}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, conduta: text }))}
-            />
-          </View>
-        )}
-      </View>
-    </ScrollView>
-  );
-
-  const renderPreviewSection = () => {
-    const triageInfo = getTriagemInfo(formData.triagem);
+  function renderTriagem() {
     return (
       <ScrollView style={styles.sectionContent}>
-        {/* PREVIEW VISUAL */}
-        <View style={[styles.previewCard, { borderTopWidth: 0, borderTopLeftRadius: 0, borderTopRightRadius: 0 }]}>
-          {/* Faixa de Gravidade */}
-          <View style={[
-            styles.previewSeverityBar,
-            {
-              backgroundColor: triageInfo.cor === '#DC2626' ? '#DC2626' :
-                              triageInfo.cor === '#EA580C' ? '#EA580C' :
-                              triageInfo.cor === '#F59E0B' ? '#F59E0B' : '#10B981'
-            }
-          ]}>
-            <Text style={styles.previewSeverityText}>{triageInfo.label}</Text>
-            <Text style={styles.previewSeverityTime}>{triageInfo.tempo}</Text>
-          </View>
-
-          <Text style={styles.previewTitle}>📋 Prévia do Documento</Text>
-          
-          <View style={styles.previewSection}>
-            <Text style={styles.previewSectionTitle}>IDENTIFICAÇÃO</Text>
-            <View style={styles.previewItem}>
-              <Text style={styles.previewLabel}>Protocolo:</Text>
-              <Text style={styles.previewValue}>#{ocorrencia?.protocolo || 'N/A'}</Text>
+        <Text style={styles.sectionTitle}>Classificacao de risco</Text>
+        <Text style={styles.sectionSubtitle}>Selecione o nivel de triagem usado no atendimento.</Text>
+        {manchesterProtocols.map((protocol) => (
+          <TouchableOpacity
+            key={protocol.id}
+            style={[styles.optionCard, { borderLeftColor: protocol.color }, formData.triagem === protocol.id && styles.optionSelected]}
+            onPress={() => updateField('triagem', protocol.id)}
+          >
+            <View style={[styles.optionDot, { backgroundColor: protocol.color }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.optionTitle}>{protocol.label}</Text>
+              <Text style={styles.optionDescription}>{protocol.description} - {protocol.tempo}</Text>
             </View>
-            <View style={styles.previewItem}>
-              <Text style={styles.previewLabel}>Local:</Text>
-              <Text style={styles.previewValue}>{ocorrencia?.endereco_texto || 'Não informado'}</Text>
-            </View>
-            <View style={styles.previewItem}>
-              <Text style={styles.previewLabel}>GPS:</Text>
-              <Text style={styles.previewValue}>
-                {ocorrencia?.latitude && ocorrencia?.longitude 
-                  ? `${ocorrencia.latitude.toFixed(4)}, ${ocorrencia.longitude.toFixed(4)}`
-                  : 'Não registrado'}
-              </Text>
-            </View>
-          </View>
+            {formData.triagem === protocol.id ? <MaterialCommunityIcons name="check-circle" size={22} color={protocol.color} /> : null}
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    );
+  }
 
-          <View style={styles.previewSection}>
-            <Text style={styles.previewSectionTitle}>DADOS CLÍNICOS</Text>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.previewSubtitle}>VÍTIMA</Text>
-                <View style={styles.previewItem}>
-                  <Text style={styles.previewLabel}>Nome:</Text>
-                  <Text style={styles.previewValue}>{formData.nomeVitima || 'N/A'}</Text>
-                </View>
-                <View style={styles.previewItem}>
-                  <Text style={styles.previewLabel}>Idade:</Text>
-                  <Text style={styles.previewValue}>{formData.idadeVitima || 'N/A'} anos</Text>
-                </View>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.previewSubtitle}>SINAIS VITAIS</Text>
-                <View style={styles.previewVitalItem}>
-                  <Text style={styles.previewLabel}>PA:</Text>
-                  <Text style={styles.previewValue}>{formData.pa || '-'} mmHg</Text>
-                </View>
-                <View style={styles.previewVitalItem}>
-                  <Text style={styles.previewLabel}>FC:</Text>
-                  <Text style={styles.previewValue}>{formData.fc || '-'} bpm</Text>
-                </View>
-                <View style={styles.previewVitalItem}>
-                  <Text style={styles.previewLabel}>SpO₂:</Text>
-                  <Text style={styles.previewValue}>{formData.spo2 || '-'} %</Text>
-                </View>
-                <View style={styles.previewVitalItem}>
-                  <Text style={styles.previewLabel}>T:</Text>
-                  <Text style={styles.previewValue}>{formData.temperatura || '-'} °C</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.previewSection}>
-            <Text style={styles.previewSectionTitle}>AVALIAÇÃO CLÍNICA</Text>
-            <View style={styles.previewItem}>
-              <Text style={styles.previewLabel}>Sintomas:</Text>
-              <Text style={styles.previewValue}>
-                {formData.sintomas.length > 0 ? formData.sintomas.join(' • ') : 'Nenhum'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.previewSection}>
-            <Text style={styles.previewSectionTitle}>CONDUTA E EVOLUÇÃO</Text>
-            <Text style={[styles.previewValue, { marginTop: 8, minHeight: 40 }]}>
-              {formData.conduta || '(Nenhuma conduta registrada)'}
-            </Text>
-          </View>
-
-          <Text style={styles.previewFooter}>
-            ✓ Documento em preto e branco com faixa de gravidade colorida
-          </Text>
+  function renderVitima() {
+    return (
+      <ScrollView style={styles.sectionContent}>
+        <Text style={styles.sectionTitle}>Dados da vitima</Text>
+        <Field label="Nome/identificacao" value={formData.nomeVitima} onChangeText={(text) => updateField('nomeVitima', text)} />
+        <View style={styles.row}>
+          <Field label="Idade" value={formData.idadeVitima} keyboardType="numeric" onChangeText={(text) => updateField('idadeVitima', text)} />
+          <Field label="Sexo" value={formData.sexoVitima} onChangeText={(text) => updateField('sexoVitima', text)} />
         </View>
-        
+        <Field label="Documento" value={formData.documentoVitima} onChangeText={(text) => updateField('documentoVitima', text)} />
+        <Field label="Contato de emergencia" value={formData.contatoEmergencia} onChangeText={(text) => updateField('contatoEmergencia', text)} />
+        <Field label="Queixa principal" value={formData.queixaPrincipal} multiline onChangeText={(text) => updateField('queixaPrincipal', text)} />
+        <Field label="Alergias conhecidas" value={formData.alergias} onChangeText={(text) => updateField('alergias', text)} />
+        <Field label="Medicamentos em uso" value={formData.medicamentos} onChangeText={(text) => updateField('medicamentos', text)} />
+        <Field label="Historico clinico relevante" value={formData.historicoClinico} multiline onChangeText={(text) => updateField('historicoClinico', text)} />
+      </ScrollView>
+    );
+  }
+
+  function renderVitais() {
+    return (
+      <ScrollView style={styles.sectionContent}>
+        <Text style={styles.sectionTitle}>Sinais vitais</Text>
+        <View style={styles.row}>
+          <Field label="PA" placeholder="120/80" value={formData.pa} onChangeText={(text) => updateField('pa', text)} />
+          <Field label="FC" placeholder="bpm" keyboardType="numeric" value={formData.fc} onChangeText={(text) => updateField('fc', text)} />
+        </View>
+        <View style={styles.row}>
+          <Field label="FR" placeholder="irpm" keyboardType="numeric" value={formData.fr} onChangeText={(text) => updateField('fr', text)} />
+          <Field label="SpO2" placeholder="%" keyboardType="numeric" value={formData.spo2} onChangeText={(text) => updateField('spo2', text)} />
+        </View>
+        <View style={styles.row}>
+          <Field label="Temperatura" placeholder="37.0" keyboardType="decimal-pad" value={formData.temperatura} onChangeText={(text) => updateField('temperatura', text)} />
+          <Field label="Glicemia" placeholder="mg/dL" keyboardType="numeric" value={formData.glicemia} onChangeText={(text) => updateField('glicemia', text)} />
+        </View>
+        <View style={styles.row}>
+          <Field label="Dor (0-10)" keyboardType="numeric" value={formData.dor} onChangeText={(text) => updateField('dor', text)} />
+          <Field label="Horario" value={formData.horarioSinais} onChangeText={(text) => updateField('horarioSinais', text)} />
+        </View>
+        <Field label="Nivel de consciencia" placeholder="Alerta, verbal, dor, inconsciente..." value={formData.consciencia} onChangeText={(text) => updateField('consciencia', text)} />
+      </ScrollView>
+    );
+  }
+
+  function renderAvaliacao() {
+    return (
+      <ScrollView style={styles.sectionContent}>
+        <Text style={styles.sectionTitle}>Avaliacao clinica</Text>
+        <Text style={styles.groupTitle}>Sintomas observados</Text>
+        <ChipGrid options={symptomOptions} selected={formData.sintomas} onToggle={(item) => toggleList('sintomas', item)} />
+        <Text style={styles.groupTitle}>ABCDE</Text>
+        {Object.entries(abcdeOptions).map(([group, options]) => (
+          <View key={group} style={styles.groupBlock}>
+            <Text style={styles.groupLabel}>{group.toUpperCase()}</Text>
+            <ChipGrid options={options} selected={formData.abcde} onToggle={(item) => toggleList('abcde', item)} />
+          </View>
+        ))}
+      </ScrollView>
+    );
+  }
+
+  function renderConduta() {
+    return (
+      <ScrollView style={styles.sectionContent}>
+        <Text style={styles.sectionTitle}>Conduta e evolucao</Text>
+        <Text style={styles.groupTitle}>Condutas realizadas</Text>
+        <ChipGrid options={conductOptions} selected={formData.condutas} onToggle={(item) => toggleList('condutas', item)} />
+        <Field label="Descricao da conduta" value={formData.conduta} multiline large onChangeText={(text) => updateField('conduta', text)} />
+        <Field label="Destino/finalizacao" placeholder="Ex: entregue ao SAMU, removida ao hospital..." value={formData.destino} multiline onChangeText={(text) => updateField('destino', text)} />
+      </ScrollView>
+    );
+  }
+
+  function renderPreview() {
+    return (
+      <ScrollView style={styles.sectionContent}>
+        {loadingSavedReport ? <Text style={styles.savedInfo}>Carregando relatorio salvo...</Text> : null}
+        {lastSavedAt ? <Text style={styles.savedInfo}>Ultimo salvamento: {formatDateTime(lastSavedAt)}</Text> : null}
+
+        <RelatorioPreview
+          formData={formData}
+          ocorrencia={ocorrencia}
+          socorrista={socorrista}
+          relatos={relatos}
+          triageInfo={triageInfo}
+          addressText={addressText}
+          gps={gps}
+          profissional={profissional}
+        />
+
         <TouchableOpacity style={styles.generateButton} onPress={generatePDF}>
           <MaterialCommunityIcons name="file-pdf-box" size={20} color="#FFF" style={{ marginRight: 8 }} />
-          <Text style={styles.generateButtonText}>Gerar e Compartilhar PDF</Text>
+          <Text style={styles.generateButtonText}>{savingReport ? 'Salvando...' : 'Gerar, salvar e compartilhar PDF'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.saveDraftButton} disabled={savingReport} onPress={() => void saveReport('rascunho')}>
+          <MaterialCommunityIcons name="content-save-outline" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+          <Text style={styles.saveDraftButtonText}>{savingReport ? 'Salvando...' : 'Salvar rascunho'}</Text>
         </TouchableOpacity>
       </ScrollView>
     );
-  };
+  }
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
@@ -837,50 +339,40 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
           <TouchableOpacity onPress={onClose}>
             <MaterialCommunityIcons name="close" size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Relatório de APH</Text>
+          <Text style={styles.headerTitle}>Relatorio de APH</Text>
           <View style={{ width: 24 }} />
         </View>
 
         <View style={styles.steps}>
-          {['triagem', 'vitima', 'vitais', 'sintomas', 'conduta', 'preview'].map((step, idx) => (
-            <View key={step} style={styles.stepContainer}>
-              <View
-                style={[
-                  styles.stepCircle,
-                  section === step && styles.stepCircleActive,
-                  (['triagem', 'vitima', 'vitais', 'sintomas', 'conduta'].indexOf(section) >= idx) && styles.stepCircleCompleted,
-                ]}
-              >
-                <Text style={styles.stepNumber}>{idx + 1}</Text>
+          {sections.map((step, idx) => {
+            const currentIdx = sections.indexOf(section);
+            const isDone = idx < currentIdx;
+            const isActive = step === section;
+            return (
+              <View key={step} style={styles.stepContainer}>
+                <View style={[styles.stepCircle, isActive && styles.stepCircleActive, isDone && styles.stepCircleDone]}>
+                  <Text style={styles.stepNumber}>{idx + 1}</Text>
+                </View>
+                {idx < sections.length - 1 ? <View style={[styles.stepLine, isDone && styles.stepLineDone]} /> : null}
               </View>
-              {idx < 5 && <View style={styles.stepLine} />}
-            </View>
-          ))}
+            );
+          })}
         </View>
 
-        {section === 'triagem' && renderTriagemSection()}
-        {section === 'vitima' && renderVitimaSection()}
-        {section === 'vitais' && renderVitaisSection()}
-        {section === 'sintomas' && renderSintomasSection()}
-        {section === 'conduta' && renderCondutaSection()}
-        {section === 'preview' && renderPreviewSection()}
+        {section === 'triagem' && renderTriagem()}
+        {section === 'vitima' && renderVitima()}
+        {section === 'vitais' && renderVitais()}
+        {section === 'avaliacao' && renderAvaliacao()}
+        {section === 'conduta' && renderConduta()}
+        {section === 'preview' && renderPreview()}
 
         <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.buttonSecondary, section === 'triagem' && styles.buttonDisabled]}
-            disabled={section === 'triagem'}
-            onPress={handlePrevious}
-          >
+          <TouchableOpacity style={[styles.buttonSecondary, section === 'triagem' && styles.buttonDisabled]} disabled={section === 'triagem'} onPress={goPrevious}>
             <MaterialCommunityIcons name="chevron-left" size={20} color={colors.text} />
             <Text style={styles.buttonText}>Anterior</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.buttonPrimary, section === 'preview' && styles.buttonDisabled]}
-            disabled={section === 'preview'}
-            onPress={handleNext}
-          >
-            <Text style={styles.buttonText}>Próximo</Text>
+          <TouchableOpacity style={[styles.buttonPrimary, section === 'preview' && styles.buttonDisabled]} disabled={section === 'preview'} onPress={goNext}>
+            <Text style={styles.buttonText}>Proximo</Text>
             <MaterialCommunityIcons name="chevron-right" size={20} color="#FFF" />
           </TouchableOpacity>
         </View>
@@ -889,11 +381,58 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
   );
 }
 
+function Field({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  multiline,
+  large,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  keyboardType?: 'default' | 'numeric' | 'decimal-pad';
+  multiline?: boolean;
+  large?: boolean;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <TextInput
+        style={[styles.input, multiline && styles.textArea, large && styles.largeTextArea]}
+        placeholder={placeholder || label}
+        placeholderTextColor={colors.placeholder}
+        keyboardType={keyboardType}
+        multiline={multiline}
+        textAlignVertical={multiline ? 'top' : 'center'}
+        value={value}
+        onChangeText={onChangeText}
+      />
+    </View>
+  );
+}
+
+function ChipGrid({ options, selected, onToggle }: { options: string[]; selected: string[]; onToggle: (item: string) => void }) {
+  return (
+    <View style={styles.chipGrid}>
+      {options.map((item) => {
+        const active = selected.includes(item);
+        return (
+          <TouchableOpacity key={item} style={[styles.chip, active && styles.chipActive]} onPress={() => onToggle(item)}>
+            <MaterialCommunityIcons name={active ? 'checkbox-marked' : 'checkbox-blank-outline'} size={18} color={active ? '#FFF' : colors.placeholder} />
+            <Text style={[styles.chipText, active && styles.chipTextActive]}>{item}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -904,257 +443,110 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: colors.text },
   steps: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: colors.background,
+    paddingVertical: 14,
   },
-  stepContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  stepContainer: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   stepCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: colors.card,
     borderWidth: 2,
     borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  stepCircleActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary,
-  },
-  stepCircleCompleted: {
-    backgroundColor: colors.success,
-    borderColor: colors.success,
-  },
-  stepNumber: {
-    color: colors.text,
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  stepLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: colors.border,
-    marginHorizontal: 4,
-  },
-  sectionContent: {
-    flex: 1,
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: colors.placeholder,
-    marginBottom: 16,
-  },
-  triagemCard: {
+  stepCircleActive: { borderColor: colors.primary, backgroundColor: colors.primary },
+  stepCircleDone: { borderColor: colors.success, backgroundColor: colors.success },
+  stepNumber: { color: colors.text, fontWeight: '800', fontSize: 13 },
+  stepLine: { flex: 1, height: 2, backgroundColor: colors.border, marginHorizontal: 4 },
+  stepLineDone: { backgroundColor: colors.success },
+  sectionContent: { flex: 1, padding: 16 },
+  sectionTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: 6 },
+  sectionSubtitle: { fontSize: 14, color: colors.placeholder, marginBottom: 16 },
+  optionCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: 8,
-    padding: 16,
+    padding: 14,
     marginBottom: 12,
     borderLeftWidth: 4,
-  },
-  triagemCardSelected: {
-    backgroundColor: '#1a2a40',
-  },
-  triagemDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    marginRight: 12,
-  },
-  triagemContent: {
-    flex: 1,
-  },
-  triagemLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  triagemDescription: {
-    fontSize: 12,
-    color: colors.placeholder,
-  },
-  accordion: {
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  accordionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  accordionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  accordionContent: {
-    padding: 16,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.placeholder,
-    marginBottom: 8,
-  },
+  optionSelected: { backgroundColor: '#172554', borderColor: colors.primary },
+  optionDot: { width: 14, height: 14, borderRadius: 7, marginRight: 12 },
+  optionTitle: { color: colors.text, fontSize: 16, fontWeight: '800' },
+  optionDescription: { color: colors.placeholder, fontSize: 12, marginTop: 3 },
+  row: { flexDirection: 'row', gap: 12 },
+  field: { flex: 1, marginBottom: 14 },
+  inputLabel: { fontSize: 13, fontWeight: '700', color: colors.placeholder, marginBottom: 7 },
   input: {
     backgroundColor: '#020617',
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 6,
+    borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     color: colors.text,
-    marginBottom: 16,
     fontSize: 14,
   },
-  checkboxRow: {
+  textArea: { minHeight: 78 },
+  largeTextArea: { minHeight: 140 },
+  groupTitle: { color: colors.text, fontSize: 16, fontWeight: '800', marginTop: 10, marginBottom: 10 },
+  groupBlock: { marginBottom: 10 },
+  groupLabel: { color: colors.placeholder, fontSize: 12, fontWeight: '800', marginBottom: 6 },
+  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 8,
-  },
-  checkboxLabel: {
-    marginLeft: 12,
-    color: colors.text,
-    fontSize: 14,
-  },
-  previewCard: {
-    backgroundColor: colors.card,
+    gap: 6,
     borderRadius: 8,
-    padding: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: 16,
+    backgroundColor: colors.card,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
-  previewSeverityBar: {
-    padding: 12,
-    borderRadius: 6,
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  previewSeverityText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-  },
-  previewSeverityTime: {
-    color: '#FFF',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  previewTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  previewSection: {
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  previewSectionTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.placeholder,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    letterSpacing: 0.5,
-  },
-  previewSubtitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 6,
-  },
-  previewItem: {
-    marginBottom: 8,
-  },
-  previewVitalItem: {
-    marginBottom: 6,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  previewLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.placeholder,
-  },
-  previewValue: {
-    fontSize: 12,
-    color: colors.text,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: '#020617',
-    borderRadius: 4,
-    flex: 1,
-    marginLeft: 8,
-  },
-  previewFooter: {
-    fontSize: 11,
-    color: colors.success,
-    marginTop: 12,
-    padding: 8,
-    backgroundColor: '#0D3B2C',
-    borderRadius: 4,
-    fontWeight: '600',
-  },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { color: colors.text, fontSize: 13, fontWeight: '600' },
+  chipTextActive: { color: '#FFF' },
   generateButton: {
     backgroundColor: colors.primary,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 12,
     marginBottom: 16,
     paddingVertical: 14,
     borderRadius: 8,
   },
-  generateButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '700',
+  generateButtonText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  saveDraftButton: {
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingVertical: 14,
+    borderRadius: 8,
   },
+  saveDraftButtonText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
+  savedInfo: { color: colors.placeholder, fontSize: 12, marginBottom: 8 },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
     paddingHorizontal: 16,
     paddingBottom: 16,
+    paddingTop: 10,
     backgroundColor: colors.background,
   },
   buttonSecondary: {
@@ -1176,12 +568,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
   },
-  buttonText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
+  buttonText: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  buttonDisabled: { opacity: 0.5 },
 });

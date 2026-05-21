@@ -533,6 +533,7 @@ export default function BombeiroDetalhe() {
         onClose={() => setShowRelatorioPDF(false)}
         ocorrencia={detalhe}
         socorrista={user}
+        relatos={relatos}
       />
     </View>
   );
