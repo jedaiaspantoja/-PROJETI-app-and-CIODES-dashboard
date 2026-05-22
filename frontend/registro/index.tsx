@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   RefreshControl,
@@ -14,17 +13,9 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { supabase } from '../../backend/connectors/postgre';
 import { getCurrentUser } from '../shared/authSession';
 import TopHeader from '../shared/TopHeader';
-
-const colors = {
-  background: '#0F172A',
-  text: '#F9FAFB',
-  card: '#111827',
-  border: '#1F2937',
-  placeholder: '#9CA3AF',
-  primary: '#2563EB',
-  warning: '#F59E0B',
-  success: '#22C55E',
-};
+import { colors } from '../shared/theme';
+import { useResponsiveLayout } from '../shared/responsive';
+import LoadingState from '../shared/LoadingState';
 
 type Caso = {
   id: string;
@@ -65,6 +56,7 @@ function statusColor(status: string | null | undefined) {
 }
 
 export default function RegistroCasos({ navigation }: any) {
+  const layout = useResponsiveLayout();
   const [casos, setCasos] = useState<Caso[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -140,10 +132,11 @@ export default function RegistroCasos({ navigation }: any) {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 12, color: colors.placeholder }}>Carregando ocorrencias...</Text>
-      </View>
+      <LoadingState
+        title="Carregando ocorrências"
+        subtitle="Atualizando o histórico do solicitante."
+        icon="clipboard-list"
+      />
     );
   }
 
@@ -159,19 +152,38 @@ export default function RegistroCasos({ navigation }: any) {
   return (
     <View style={styles.container}>
       <TopHeader title="Meus Registros" />
-      <View style={{ flex: 1, paddingHorizontal: 20 }}>
-        <Text style={[styles.title, { marginTop: 20 }]}>Minhas ocorrencias</Text>
+      <View
+        style={[
+          styles.content,
+          {
+            paddingHorizontal: layout.horizontalPadding,
+            maxWidth: layout.maxContentWidth,
+            alignSelf: 'center',
+            width: '100%',
+          },
+        ]}
+      >
+        <View style={styles.headerPanel}>
+        <Text style={styles.eyebrow}>Acompanhamento</Text>
+        <Text style={styles.title}>Minhas ocorrencias</Text>
         <Text style={styles.subtitle}>Acompanhe o andamento dos chamados abertos por voce.</Text>
+        </View>
 
       {casos.length === 0 ? (
-        <Text style={styles.emptyText}>Nenhuma ocorrencia registrada.</Text>
+        <View style={styles.emptyPanel}>
+          <FontAwesome6 name="clipboard-list" size={18} color={colors.placeholder} />
+          <Text style={styles.emptyText}>Nenhuma ocorrência registrada ainda.</Text>
+        </View>
       ) : (
         <FlatList
           data={casos}
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('DetalheRegistro', { registro: item })}>
+            <TouchableOpacity
+              style={[styles.card, layout.isSmall && styles.cardSmall]}
+              onPress={() => navigation.navigate('DetalheRegistro', { registro: item })}
+            >
               <View style={styles.cardIcon}>
                 <FontAwesome6 name="truck-medical" size={17} color={statusColor(item.status)} />
               </View>
@@ -180,7 +192,7 @@ export default function RegistroCasos({ navigation }: any) {
                 <Text style={styles.cardDescription}>{item.description}</Text>
                 <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
               </View>
-              <View style={styles.statusBox}>
+              <View style={[styles.statusBox, layout.isSmall && styles.statusBoxSmall, { borderColor: statusColor(item.status) }]}>
                 <Text style={[styles.statusText, { color: statusColor(item.status) }]}>{statusToLabel(item.status)}</Text>
               </View>
             </TouchableOpacity>
@@ -195,16 +207,23 @@ export default function RegistroCasos({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, paddingTop: 40 },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 26, fontWeight: '800', color: colors.text, marginBottom: 6 },
-  subtitle: { fontSize: 14, color: colors.placeholder, marginBottom: 16 },
+  content: { flex: 1, paddingHorizontal: 18 },
+  headerPanel: { borderWidth: 1, borderColor: colors.border, borderRadius: colors.radiusLg, backgroundColor: colors.card, padding: 16, marginTop: 16, marginBottom: 14 },
+  eyebrow: { color: colors.primary, fontSize: 12, fontWeight: '900', textTransform: 'uppercase', marginBottom: 6 },
+  title: { fontSize: 25, fontWeight: '800', color: colors.text, marginBottom: 6 },
+  subtitle: { fontSize: 14, color: colors.placeholder },
+  emptyPanel: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: colors.border, borderRadius: colors.radiusMd, backgroundColor: colors.card, padding: 14 },
   emptyText: { color: colors.placeholder, fontSize: 14 },
-  card: { flexDirection: 'row', gap: 12, backgroundColor: colors.card, padding: 14, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  cardIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#020617' },
+  card: { flexDirection: 'row', gap: 12, backgroundColor: colors.card, padding: 14, borderRadius: colors.radiusLg, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  cardSmall: { alignItems: 'flex-start' },
+  cardIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft },
   cardTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
   cardDescription: { fontSize: 13, color: colors.placeholder, marginTop: 2 },
   cardDate: { fontSize: 12, color: colors.placeholder, marginTop: 4 },
-  statusBox: { maxWidth: 112, alignItems: 'flex-end' },
+  statusBox: { maxWidth: 112, alignItems: 'flex-end', borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
+  statusBoxSmall: { maxWidth: 96 },
   statusText: { fontSize: 12, fontWeight: '800', textAlign: 'right' },
 });
+

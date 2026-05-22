@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Linking,
   RefreshControl,
@@ -15,20 +14,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../backend/connectors/postgre';
 import { getCurrentUser } from '../shared/authSession';
 import TopHeader from '../shared/TopHeader';
+import { colors } from '../shared/theme';
+import LoadingState from '../shared/LoadingState';
 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-
-const colors = {
-  background: '#0F172A',
-  text: '#F9FAFB',
-  card: '#111827',
-  border: '#1F2937',
-  placeholder: '#9CA3AF',
-  primary: '#2563EB',
-  danger: '#EF4444',
-  warning: '#F59E0B',
-  success: '#10B981', // Nova cor
-};
 
 type OcorrenciaRow = {
   id: string;
@@ -49,17 +38,17 @@ function getStatusStyle(statusRaw: string | null | undefined) {
   const s = (statusRaw || '').toLowerCase();
   switch (s) {
     case 'guarnicao_empenhada':
-      return { bg: '#7F1D1D', text: '#FECACA', label: 'Empenhada (Responda)', icon: 'alert-circle-outline' };
+      return { bg: '#fee2e2', text: '#991b1b', label: 'Empenhada (Responda)', icon: 'alert-circle-outline' };
     case 'em_deslocamento':
-      return { bg: '#78350F', text: '#FDE68A', label: 'Em deslocamento', icon: 'ambulance' };
+      return { bg: '#fef3c7', text: '#92400e', label: 'Em deslocamento', icon: 'ambulance' };
     case 'em_atendimento':
-      return { bg: '#064E3B', text: '#A7F3D0', label: 'Em atendimento', icon: 'medical-bag' };
+      return { bg: '#dcfce7', text: '#166534', label: 'Em atendimento', icon: 'medical-bag' };
     case 'finalizada':
-      return { bg: '#1F2937', text: '#D1D5DB', label: 'Finalizada', icon: 'check-circle-outline' };
+      return { bg: '#e2e8f0', text: '#475569', label: 'Finalizada', icon: 'check-circle-outline' };
     case 'cancelada':
-      return { bg: '#4C1D95', text: '#DDD6FE', label: 'Cancelada', icon: 'cancel' };
+      return { bg: '#ede9fe', text: '#5b21b6', label: 'Cancelada', icon: 'cancel' };
     default:
-      return { bg: '#172554', text: '#BFDBFE', label: statusRaw || 'Desconhecido', icon: 'information-outline' };
+      return { bg: '#e0f2fe', text: '#075985', label: statusRaw || 'Desconhecido', icon: 'information-outline' };
   }
 }
 
@@ -259,17 +248,18 @@ export default function BombeiroDashboard({ navigation }: any) {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 12, color: colors.placeholder }}>Sincronizando com o CIODES...</Text>
-      </View>
+      <LoadingState
+        title="Sincronizando com o CIODES"
+        subtitle="Carregando viatura, equipe e chamados atribuídos."
+        icon="tower-broadcast"
+      />
     );
   }
 
   return (
     <View style={styles.container}>
       <TopHeader title="Dashboard CIODES" />
-      <View style={{ flex: 1, paddingHorizontal: 20 }}>
+      <View style={styles.content}>
         <Text style={[styles.title, { marginTop: 16 }]}>Minhas Ocorrências</Text>
         <Text style={styles.subtitle}>Acompanhe os chamados atribuídos à sua viatura.</Text>
 
@@ -290,7 +280,7 @@ export default function BombeiroDashboard({ navigation }: any) {
 
       {erroGuarnicao ? null : ocorrenciasFiltradas.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <MaterialCommunityIcons name="check-decagram" size={64} color="#1F2937" />
+          <MaterialCommunityIcons name="check-decagram" size={64} color="#dbe7ef" />
           <Text style={styles.emptyText}>Nenhuma ocorrência ativa.</Text>
           <Text style={styles.emptySubtext}>Aguardando chamados do CIODES.</Text>
         </View>
@@ -329,6 +319,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  content: {
+    flex: 1,
+    paddingHorizontal: 18,
+  },
   title: {
     fontSize: 26,
     fontWeight: '800',
@@ -342,18 +336,13 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 12,
+    borderRadius: colors.radiusLg,
     borderWidth: 1,
     borderColor: colors.border,
     padding: 16,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
   },
   cardUrgent: {
-    borderColor: '#7F1D1D',
+    borderColor: '#fecaca',
     borderWidth: 1.5,
   },
   cardHeader: {
@@ -438,7 +427,7 @@ const styles = StyleSheet.create({
   alertBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#450a0a',
+    backgroundColor: '#fee2e2',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.danger,
@@ -495,3 +484,5 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 });
+
+

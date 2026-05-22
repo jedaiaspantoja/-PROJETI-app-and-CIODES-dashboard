@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   StyleSheet,
@@ -12,16 +11,9 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { supabase } from '../../backend/connectors/postgre';
 import { cacheReferenceDataV2, executeOfflineSelect } from '../../backend/offline/offlineV2';
 import TopHeader from '../shared/TopHeader';
-
-const colors = {
-  background: '#0F172A',
-  text: '#F9FAFB',
-  card: '#1E293B',
-  placeholder: '#9CA3AF',
-  primary: '#2563EB',
-  border: '#334155',
-  success: '#22C55E',
-};
+import { colors } from '../shared/theme';
+import { useResponsiveLayout } from '../shared/responsive';
+import LoadingState from '../shared/LoadingState';
 
 type FlowMode = 'training' | 'real-online' | 'real-offline' | string;
 
@@ -122,6 +114,7 @@ function resolveFlowMode(params: ListaCasosParams) {
 }
 
 export default function ListaCasos({ navigation, route }: ListaCasosProps) {
+  const layout = useResponsiveLayout();
   const params = route?.params || {};
   const { mode, isModoReal, isTreinamento } = resolveFlowMode(params);
   const { userLocation, dataOcorrenciaISO } = params;
@@ -220,24 +213,41 @@ export default function ListaCasos({ navigation, route }: ListaCasosProps) {
 
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center' }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 12, color: colors.placeholder }}>Carregando casos...</Text>
-      </View>
+      <LoadingState
+        title="Carregando casos"
+        subtitle="Buscando tipos de ocorrência e tutoriais disponíveis."
+        icon="kit-medical"
+      />
     );
   }
 
   return (
     <View style={styles.container}>
       <TopHeader title={isModoReal ? 'Emergência' : 'Treinamento'} />
-      <View style={{ flex: 1, paddingHorizontal: 20 }}>
-        <Text style={[styles.title, { marginTop: 20 }]}>{isModoReal ? 'Selecione o caso da ocorrencia' : 'Treinamentos de APH'}</Text>
+      <View
+        style={[
+          styles.content,
+          {
+            paddingHorizontal: layout.horizontalPadding,
+            maxWidth: layout.maxContentWidth,
+            alignSelf: 'center',
+            width: '100%',
+          },
+        ]}
+      >
+        <View style={styles.headerPanel}>
+        <Text style={styles.eyebrow}>{isModoReal ? 'Registro assistido' : 'Capacitação guiada'}</Text>
+        <Text style={styles.title}>{isModoReal ? 'Selecione o caso da ocorrencia' : 'Treinamentos de APH'}</Text>
       {!isModoReal ? (
         <Text style={styles.intro}>Escolha uma situacao para praticar decisoes rapidas antes de uma emergencia real.</Text>
       ) : null}
+        </View>
 
       {casos.length === 0 ? (
-        <Text style={{ color: colors.placeholder }}>Nenhum caso disponivel.</Text>
+        <View style={styles.emptyPanel}>
+          <FontAwesome6 name="folder-open" size={18} color={colors.placeholder} />
+          <Text style={styles.emptyText}>Nenhum caso disponível no momento.</Text>
+        </View>
       ) : (
         <FlatList
           data={casos}
@@ -246,7 +256,7 @@ export default function ListaCasos({ navigation, route }: ListaCasosProps) {
             const meta = getTrainingMeta(item.codigo);
             return (
               <TouchableOpacity
-                style={styles.card}
+                style={[styles.card, layout.isSmall && styles.cardSmall]}
                 activeOpacity={0.84}
                 onPress={() => {
                   if (!item.tutorialId) {
@@ -268,11 +278,11 @@ export default function ListaCasos({ navigation, route }: ListaCasosProps) {
                 }}
               >
                 <View style={styles.iconBox}>
-                  <FontAwesome6 name={meta.icon} size={20} color={colors.text} />
+                  <FontAwesome6 name={meta.icon} size={20} color={colors.primary} />
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <View style={styles.cardHeader}>
+                  <View style={[styles.cardHeader, layout.isSmall && styles.cardHeaderSmall]}>
                     <Text style={styles.cardTitle}>{item.title}</Text>
                     {!isModoReal ? <Text style={styles.badge}>{meta.duration}</Text> : null}
                   </View>
@@ -296,8 +306,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  content: {
+    flex: 1,
+    paddingHorizontal: 18,
+  },
+  headerPanel: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: colors.radiusLg,
+    backgroundColor: colors.card,
+    padding: 16,
+    marginTop: 16,
+    marginBottom: 14,
+  },
+  eyebrow: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
   title: {
-    fontSize: 27,
+    fontSize: 25,
     fontWeight: '800',
     color: colors.text,
     marginBottom: 8,
@@ -306,24 +336,42 @@ const styles = StyleSheet.create({
     color: colors.placeholder,
     fontSize: 15,
     lineHeight: 21,
-    marginBottom: 20,
+  },
+  emptyPanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: colors.radiusMd,
+    backgroundColor: colors.card,
+    padding: 14,
+  },
+  emptyText: {
+    flex: 1,
+    color: colors.placeholder,
+    fontSize: 14,
+    lineHeight: 19,
   },
   card: {
     flexDirection: 'row',
     backgroundColor: colors.card,
-    padding: 14,
-    borderRadius: 12,
+    padding: 15,
+    borderRadius: colors.radiusLg,
     alignItems: 'center',
-    elevation: 5,
     borderWidth: 1,
     borderColor: colors.border,
     gap: 12,
   },
+  cardSmall: {
+    alignItems: 'flex-start',
+    gap: 10,
+  },
   iconBox: {
     width: 44,
     height: 44,
-    borderRadius: 10,
-    backgroundColor: colors.primary,
+    borderRadius: 14,
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -332,6 +380,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
+  },
+  cardHeaderSmall: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
   },
   cardTitle: {
     fontSize: 17,
@@ -368,3 +420,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
+

@@ -14,26 +14,15 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-
-const colors = {
-  background: '#0F172A',
-  text: '#F9FAFB',
-  card: '#111827',
-  border: '#1F2937',
-  placeholder: '#9CA3AF',
-  primary: '#2563EB',
-  danger: '#EF4444',
-  success: '#22C55E',
-  warning: '#F59E0B',
-};
+import { colors } from '../shared/theme';
 
 // Sistema de Cores Manchester
 const manchesterColors = {
-  red: '#DC2626',      // Emergência
+  red: '#dc2626',      // Emergência
   orange: '#EA580C',   // Muito Urgente
   yellow: '#FCD34D',   // Urgente
-  green: '#10B981',    // Pouco Urgente
-  blue: '#3B82F6',     // Consulta
+  green: '#22c55e',    // Pouco Urgente
+  blue: '#0284c7',     // Consulta
 };
 
 const manchesterProtocols = [
@@ -139,10 +128,10 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
 
   const getTriagemInfo = (triagem: string) => {
     const map: Record<string, { label: string; cor: string; tempo: string }> = {
-      red: { label: 'EMERGÊNCIA', cor: '#DC2626', tempo: 'ATENDIMENTO IMEDIATO' },
+      red: { label: 'EMERGÊNCIA', cor: '#dc2626', tempo: 'ATENDIMENTO IMEDIATO' },
       orange: { label: 'MUITO URGENTE', cor: '#EA580C', tempo: 'ATENDIMENTO EM ATÉ 10 MIN' },
-      yellow: { label: 'URGENTE', cor: '#F59E0B', tempo: 'ATENDIMENTO EM ATÉ 30 MIN' },
-      green: { label: 'POUCO URGENTE', cor: '#10B981', tempo: 'ATENDIMENTO EM ATÉ 120 MIN' },
+      yellow: { label: 'URGENTE', cor: '#d97706', tempo: 'ATENDIMENTO EM ATÉ 30 MIN' },
+      green: { label: 'POUCO URGENTE', cor: '#22c55e', tempo: 'ATENDIMENTO EM ATÉ 120 MIN' },
     };
     return map[triagem] || map.yellow;
   };
@@ -733,9 +722,9 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
           <View style={[
             styles.previewSeverityBar,
             {
-              backgroundColor: triageInfo.cor === '#DC2626' ? '#DC2626' :
+              backgroundColor: triageInfo.cor === '#dc2626' ? '#dc2626' :
                               triageInfo.cor === '#EA580C' ? '#EA580C' :
-                              triageInfo.cor === '#F59E0B' ? '#F59E0B' : '#10B981'
+                              triageInfo.cor === '#d97706' ? '#d97706' : '#22c55e'
             }
           ]}>
             <Text style={styles.previewSeverityText}>{triageInfo.label}</Text>
@@ -976,7 +965,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
   },
   triagemCardSelected: {
-    backgroundColor: '#1a2a40',
+    backgroundColor: '#f8fafc',
   },
   triagemDot: {
     width: 16,
@@ -1027,7 +1016,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#020617',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 6,
@@ -1120,7 +1109,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: '#020617',
+    backgroundColor: '#ffffff',
     borderRadius: 4,
     flex: 1,
     marginLeft: 8,
@@ -1130,7 +1119,7 @@ const styles = StyleSheet.create({
     color: colors.success,
     marginTop: 12,
     padding: 8,
-    backgroundColor: '#0D3B2C',
+    backgroundColor: '#dcfce7',
     borderRadius: 4,
     fontWeight: '600',
   },
@@ -1185,3 +1174,5 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 });
+
+

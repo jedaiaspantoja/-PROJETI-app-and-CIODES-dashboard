@@ -1,18 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { supabase } from '../../backend/connectors/postgre';
 import { getCurrentUser } from '../shared/authSession';
 import { cacheReferenceDataV2, executeOfflineSelect, savePendingOccurrence } from '../../backend/offline/offlineV2';
-
-const colors = {
-  background: '#0F172A',
-  text: '#F9FAFB',
-  secondary: '#9CA3AF',
-  card: '#020617',
-  primary: '#2563EB',
-  border: '#1F2937',
-};
+import { useResponsiveLayout } from '../shared/responsive';
+import { colors } from '../shared/theme';
 
 type TipoVitimaRow = {
   id: number;
@@ -27,7 +20,16 @@ type UserLocation = {
   accuracy?: number | null;
 };
 
+type ProtocolSummary = {
+  protocolo: string;
+  solicitante: string;
+  localizacao: string;
+  ocorrenciaId: string | null;
+  tipoVitimaId: number;
+};
+
 export default function TipoVitima({ route, navigation }: any) {
+  const layout = useResponsiveLayout();
   const {
     tipo_ocorrencia_id,
     codigo,
@@ -43,6 +45,17 @@ export default function TipoVitima({ route, navigation }: any) {
   const [tipos, setTipos] = useState<TipoVitimaRow[]>([]);
   const [selected, setSelected] = useState<TipoVitimaRow | null>(null);
   const [saving, setSaving] = useState(false);
+  const [protocolSummary, setProtocolSummary] = useState<ProtocolSummary | null>(null);
+
+  useEffect(() => {
+    if (!protocolSummary) return undefined;
+
+    const timeoutId = setTimeout(() => {
+      handleContinueTraining();
+    }, 3200);
+
+    return () => clearTimeout(timeoutId);
+  }, [protocolSummary]);
 
   useEffect(() => {
     async function carregarTipos() {
@@ -115,8 +128,12 @@ export default function TipoVitima({ route, navigation }: any) {
           criada_em: dataISO,
         };
         await savePendingOccurrence(pending);
-        Alert.alert('Ocorrência offline', 'Chamado salvo no dispositivo para sincronizar depois.');
-        return { id: pending.id_local, protocolo: 'OFFLINE' };
+        return {
+          id: pending.id_local,
+          protocolo: 'OFFLINE',
+          solicitante: user.nome || 'Solicitante',
+          localizacao: formatLocation(location),
+        };
       }
       Alert.alert('Erro', error.message || 'Não foi possível abrir o chamado.');
       return null;
@@ -129,8 +146,11 @@ export default function TipoVitima({ route, navigation }: any) {
       alterado_por: user.id,
     });
 
-    Alert.alert('Chamado aberto', `Protocolo: ${data.protocolo}`);
-    return data;
+    return {
+      ...data,
+      solicitante: user.nome || 'Solicitante',
+      localizacao: formatLocation(location),
+    };
   }
 
   async function handleConfirm() {
@@ -148,6 +168,14 @@ export default function TipoVitima({ route, navigation }: any) {
         if (!created) return;
         ocorrenciaId = created.id;
         protocolo = created.protocolo || null;
+        setProtocolSummary({
+          protocolo: created.protocolo || '-',
+          solicitante: created.solicitante,
+          localizacao: created.localizacao,
+          ocorrenciaId,
+          tipoVitimaId: selected.id,
+        });
+        return;
       }
 
       navigation.navigate('TutorialCaso', {
@@ -166,8 +194,35 @@ export default function TipoVitima({ route, navigation }: any) {
     }
   }
 
+  function handleContinueTraining() {
+    if (!protocolSummary || !selected) return;
+
+    setProtocolSummary(null);
+    navigation.navigate('TutorialCaso', {
+      tutorialId,
+      tipoVitimaId: protocolSummary.tipoVitimaId,
+      profile: selected.codigo,
+      codigo,
+      title,
+      mode,
+      is_treinamento: false,
+      ocorrenciaId: protocolSummary.ocorrenciaId,
+      protocolo: protocolSummary.protocolo,
+    });
+  }
+
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        {
+          paddingHorizontal: layout.horizontalPadding,
+          maxWidth: layout.maxContentWidth,
+          alignSelf: 'center',
+          width: '100%',
+        },
+      ]}
+    >
       <Text style={styles.title}>Tipo da Vítima</Text>
 
       {title && (
@@ -199,7 +254,7 @@ export default function TipoVitima({ route, navigation }: any) {
         ))}
       </View>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, layout.isSmall && styles.footerStacked]}>
         <TouchableOpacity style={styles.footerButton} onPress={() => navigation.goBack()}>
           <FontAwesome6 name="arrow-left" size={16} color={colors.secondary} />
           <Text style={styles.footerButtonText}>Voltar</Text>
@@ -213,20 +268,63 @@ export default function TipoVitima({ route, navigation }: any) {
           <Text style={styles.footerButtonPrimaryText}>{saving ? 'Abrindo chamado...' : 'Confirmar seleção'}</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={!!protocolSummary}
+        transparent
+        animationType="fade"
+        onRequestClose={handleContinueTraining}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.protocolModal}>
+            <View style={styles.modalIcon}>
+              <FontAwesome6 name="check" size={24} color="#FFFFFF" />
+            </View>
+            <Text style={styles.modalEyebrow}>Chamado registrado</Text>
+            <Text style={styles.modalTitle}>Protocolo enviado ao CIODES</Text>
+
+            <View style={styles.protocolInfoList}>
+              <View style={styles.protocolInfoRow}>
+                <Text style={styles.protocolInfoLabel}>Protocolo</Text>
+                <Text style={styles.protocolInfoValue}>{protocolSummary?.protocolo}</Text>
+              </View>
+              <View style={styles.protocolInfoRow}>
+                <Text style={styles.protocolInfoLabel}>Solicitante</Text>
+                <Text style={styles.protocolInfoValue}>{protocolSummary?.solicitante}</Text>
+              </View>
+              <View style={styles.protocolInfoRowLast}>
+                <Text style={styles.protocolInfoLabel}>Localização</Text>
+                <Text style={styles.protocolInfoValue}>{protocolSummary?.localizacao}</Text>
+              </View>
+            </View>
+            <Text style={styles.modalAutoText}>Abrindo orientações de treinamento...</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
+}
+
+function formatLocation(location: UserLocation | null) {
+  if (!location || location.latitude == null || location.longitude == null) {
+    return 'Localização não informada';
+  }
+
+  const latitude = Number(location.latitude).toFixed(6);
+  const longitude = Number(location.longitude).toFixed(6);
+  return `${latitude}, ${longitude}`;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingTop: 80,
-    paddingHorizontal: 24,
+    paddingTop: 36,
+    paddingHorizontal: 18,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: colors.text,
     marginBottom: 12,
   },
@@ -251,13 +349,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.card,
-    borderRadius: 14,
+    borderRadius: colors.radiusLg,
     padding: 16,
     borderWidth: 1,
     borderColor: colors.border,
   },
   optionCardSelected: {
     borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
   },
   optionTextContainer: {
     flex: 1,
@@ -278,11 +377,15 @@ const styles = StyleSheet.create({
     marginBottom: 40,
     gap: 12,
   },
+  footerStacked: {
+    marginBottom: 24,
+  },
   footerButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    minHeight: 46,
   },
   footerButtonText: {
     color: colors.secondary,
@@ -291,7 +394,7 @@ const styles = StyleSheet.create({
   footerButtonPrimary: {
     backgroundColor: colors.primary,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: colors.radiusSm,
     alignItems: 'center',
   },
   footerButtonPrimaryText: {
@@ -299,7 +402,82 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.52)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  protocolModal: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: colors.radiusLg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    padding: 20,
+  },
+  modalIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    marginBottom: 14,
+  },
+  modalEyebrow: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  modalTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 16,
+  },
+  protocolInfoList: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: colors.radiusMd,
+    overflow: 'hidden',
+    marginBottom: 18,
+  },
+  protocolInfoRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.cardAlt,
+  },
+  protocolInfoRowLast: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: colors.cardAlt,
+  },
+  protocolInfoLabel: {
+    color: colors.placeholder,
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 3,
+  },
+  protocolInfoValue: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  modalAutoText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
 });
+
 
 
 

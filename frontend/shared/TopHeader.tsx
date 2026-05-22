@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform } from 'react
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors } from './theme';
+import { useResponsiveLayout } from './responsive';
 
 interface TopHeaderProps {
   title?: string;
@@ -11,6 +13,7 @@ interface TopHeaderProps {
 export default function TopHeader({ title = '' }: TopHeaderProps) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -31,12 +34,12 @@ export default function TopHeader({ title = '' }: TopHeaderProps) {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: Math.max(insets.top, 20) + 10 }]}>
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 20) + 10, paddingHorizontal: layout.horizontalPadding }]}>
       <TouchableOpacity style={styles.button} onPress={handleBack}>
         <MaterialCommunityIcons 
           name={navigation.canGoBack() ? "chevron-left" : "logout"} 
           size={navigation.canGoBack() ? 30 : 24} 
-          color="#F9FAFB" 
+          color={colors.text} 
         />
       </TouchableOpacity>
 
@@ -46,7 +49,7 @@ export default function TopHeader({ title = '' }: TopHeaderProps) {
         style={styles.button} 
         onPress={() => Alert.alert('Perfil', 'Abrindo configuração do perfil / Logout')}
       >
-        <MaterialCommunityIcons name="account-circle" size={28} color="#3B82F6" />
+        <MaterialCommunityIcons name="account-circle" size={28} color={colors.secondaryAccent} />
       </TouchableOpacity>
     </View>
   );
@@ -59,18 +62,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 15,
-    backgroundColor: '#0F172A',
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
+    borderBottomColor: colors.border,
   },
   button: {
-    padding: 4,
+    minWidth: 42,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonPlaceholder: {
     width: 38,
   },
   title: {
-    color: '#F9FAFB',
+    color: colors.text,
     fontSize: 18,
     fontWeight: '700',
     flex: 1,

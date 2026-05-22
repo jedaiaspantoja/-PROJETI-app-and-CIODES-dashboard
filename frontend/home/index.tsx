@@ -17,18 +17,8 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { supabase } from '../../backend/connectors/postgre';
 import { getCurrentUser } from '../shared/authSession';
 import TopHeader from '../shared/TopHeader';
-
-const colors = {
-  background: '#0F172A',
-  text: '#F9FAFB',
-  secondary: '#9CA3AF',
-  card: '#020617',
-  cardAlt: '#111827',
-  primary: '#2563EB',
-  danger: '#DC2626',
-  border: '#1F2937',
-  warning: '#F59E0B',
-};
+import { colors } from '../shared/theme';
+import { useResponsiveLayout } from '../shared/responsive';
 
 type RecentOccurrence = {
   id: string;
@@ -65,6 +55,7 @@ function formatElapsed(iso?: string | null) {
 }
 
 export default function Home({ navigation }: any) {
+  const layout = useResponsiveLayout();
   const [loadingEmergency, setLoadingEmergency] = useState(false);
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [recentes, setRecentes] = useState<RecentOccurrence[]>([]);
@@ -182,32 +173,60 @@ export default function Home({ navigation }: any) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <TopHeader title="JedAI" />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.eyebrow}>App do solicitante</Text>
-      <Text style={styles.title}>Como podemos ajudar?</Text>
-      <Text style={styles.subtitle}>Abra um chamado real em emergencia ou acesse treinamentos para se preparar.</Text>
+      <TopHeader title="PROJETI" />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingHorizontal: layout.horizontalPadding,
+            maxWidth: layout.maxContentWidth,
+            alignSelf: 'center',
+            width: '100%',
+          },
+        ]}
+      >
+      <View style={styles.heroPanel}>
+        <Text style={styles.eyebrow}>App do solicitante</Text>
+        <Text style={styles.title}>Atendimento rápido e orientado</Text>
+        <Text style={styles.subtitle}>Abra chamados reais, acompanhe o CIODES e acesse treinamentos de primeiros cuidados.</Text>
+        <View style={[styles.heroStats, layout.isSmall && styles.stackRow]}>
+          <View style={styles.statPill}>
+            <Text style={styles.statValue}>193</Text>
+            <Text style={styles.statLabel}>Emergência</Text>
+          </View>
+          <View style={styles.statPill}>
+            <Text style={styles.statValue}>{recentes.length}</Text>
+            <Text style={styles.statLabel}>Recentes</Text>
+          </View>
+        </View>
+      </View>
 
       <TouchableOpacity style={styles.emergencyCard} onPress={handleOcorrenciaReal} disabled={loadingEmergency} activeOpacity={0.85}>
         <View style={styles.emergencyIcon}>
           {loadingEmergency ? <ActivityIndicator color="#FFFFFF" /> : <FontAwesome6 name="triangle-exclamation" size={24} color="#FFFFFF" />}
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.emergencyTitle}>Emergencia real</Text>
-          <Text style={styles.emergencyText}>Coletar localizacao, informar ocorrencia e acionar o CIODES.</Text>
+          <Text style={styles.emergencyTitle}>Emergência real</Text>
+          <Text style={styles.emergencyText}>Coleta localização, registra a ocorrência e aciona o fluxo do CIODES.</Text>
         </View>
+        <FontAwesome6 name="arrow-right" size={16} color="#FFFFFF" />
       </TouchableOpacity>
 
-      <View style={styles.quickGrid}>
+      <View style={[styles.quickGrid, layout.isSmall && styles.quickGridStacked]}>
         <TouchableOpacity style={styles.quickCard} onPress={handleTreinamento}>
-          <FontAwesome6 name="book-medical" size={20} color={colors.primary} />
+          <View style={styles.quickIcon}>
+            <FontAwesome6 name="book-medical" size={20} color={colors.primary} />
+          </View>
           <Text style={styles.quickTitle}>Treinamento</Text>
           <Text style={styles.quickText}>Tutoriais para primeiros cuidados.</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.quickCard} onPress={handleVerOcorrencias}>
-          <FontAwesome6 name="clock-rotate-left" size={20} color={colors.primary} />
-          <Text style={styles.quickTitle}>Historico</Text>
+          <View style={styles.quickIcon}>
+            <FontAwesome6 name="clock-rotate-left" size={20} color={colors.primary} />
+          </View>
+          <Text style={styles.quickTitle}>Histórico</Text>
           <Text style={styles.quickText}>Acompanhe seus chamados.</Text>
         </TouchableOpacity>
       </View>
@@ -225,7 +244,10 @@ export default function Home({ navigation }: any) {
           <Text style={styles.loadingText}>Atualizando historico...</Text>
         </View>
       ) : recentes.length === 0 ? (
-        <Text style={styles.emptyText}>Nenhuma ocorrencia registrada ainda.</Text>
+        <View style={styles.emptyPanel}>
+          <FontAwesome6 name="clipboard-list" size={18} color={colors.placeholder} />
+          <Text style={styles.emptyText}>Nenhuma ocorrência registrada ainda.</Text>
+        </View>
       ) : (
         recentes.map((item) => (
           <TouchableOpacity key={item.id} style={styles.recentCard} onPress={() => navigation.navigate('DetalheRegistro', { registro: item })}>
@@ -245,16 +267,24 @@ export default function Home({ navigation }: any) {
 const getStyles = (c: typeof colors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: c.background },
-    content: { paddingTop: 20, paddingHorizontal: 20, paddingBottom: 32 },
+    content: { paddingTop: 16, paddingHorizontal: 18, paddingBottom: 32 },
+    heroPanel: { borderWidth: 1, borderColor: c.border, borderRadius: c.radiusLg, padding: 18, backgroundColor: c.card, marginBottom: 14 },
     eyebrow: { color: c.primary, fontSize: 13, fontWeight: '700', marginBottom: 6 },
-    title: { fontSize: 30, fontWeight: '800', color: c.text, marginBottom: 8 },
-    subtitle: { fontSize: 15, color: c.secondary, marginBottom: 22, lineHeight: 21 },
-    emergencyCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: c.danger, borderRadius: 12, padding: 16, marginBottom: 14 },
+    title: { fontSize: 28, fontWeight: '800', color: c.text, marginBottom: 8 },
+    subtitle: { fontSize: 14, color: c.secondary, lineHeight: 21 },
+    heroStats: { flexDirection: 'row', gap: 10, marginTop: 16 },
+    stackRow: { flexDirection: 'column' },
+    statPill: { flex: 1, borderWidth: 1, borderColor: c.border, borderRadius: c.radiusMd, backgroundColor: c.cardAlt, padding: 12 },
+    statValue: { color: c.primary, fontSize: 22, fontWeight: '900' },
+    statLabel: { color: c.secondary, fontSize: 12, fontWeight: '800', marginTop: 2 },
+    emergencyCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: c.danger, borderRadius: c.radiusLg, padding: 16, marginBottom: 14 },
     emergencyIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
     emergencyTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
     emergencyText: { color: '#FEE2E2', fontSize: 13, marginTop: 3, lineHeight: 18 },
     quickGrid: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-    quickCard: { flex: 1, minHeight: 120, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 10, padding: 14, justifyContent: 'space-between' },
+    quickGridStacked: { flexDirection: 'column' },
+    quickCard: { flex: 1, minHeight: 132, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: c.radiusLg, padding: 14, justifyContent: 'space-between' },
+    quickIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' },
     quickTitle: { color: c.text, fontSize: 16, fontWeight: '700', marginTop: 10 },
     quickText: { color: c.secondary, fontSize: 12, lineHeight: 17 },
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
@@ -262,9 +292,11 @@ const getStyles = (c: typeof colors) =>
     sectionLink: { color: c.primary, fontSize: 13, fontWeight: '700' },
     loadingRecent: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
     loadingText: { color: c.secondary, fontSize: 13 },
+    emptyPanel: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: c.border, borderRadius: c.radiusMd, backgroundColor: c.card, padding: 14 },
     emptyText: { color: c.secondary, fontSize: 14 },
-    recentCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.cardAlt, borderWidth: 1, borderColor: c.border, borderRadius: 10, padding: 12, marginBottom: 10 },
+    recentCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: c.radiusMd, padding: 12, marginBottom: 10 },
     recentTitle: { color: c.text, fontSize: 15, fontWeight: '700' },
     recentText: { color: c.secondary, fontSize: 12, marginTop: 3 },
     statusText: { color: c.warning, fontSize: 12, fontWeight: '700', textAlign: 'right', maxWidth: 120 },
   });
+

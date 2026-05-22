@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Linking,
   StyleSheet,
@@ -17,18 +16,8 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { supabase } from '../../backend/connectors/postgre';
 import { getCurrentUser } from '../shared/authSession';
 import RelatorioPDF from './RelatorioPDF';
-
-const colors = {
-  background: '#0F172A',
-  text: '#F9FAFB',
-  card: '#111827',
-  border: '#1F2937',
-  placeholder: '#9CA3AF',
-  primary: '#2563EB',
-  danger: '#EF4444',
-  success: '#22C55E',
-  warning: '#F59E0B',
-};
+import { colors } from '../shared/theme';
+import LoadingState from '../shared/LoadingState';
 
 const STATUS_FLOW = ['guarnicao_empenhada', 'em_deslocamento', 'em_atendimento', 'finalizada'];
 
@@ -36,12 +25,12 @@ const STATUS_FLOW = ['guarnicao_empenhada', 'em_deslocamento', 'em_atendimento',
 function getStatusStyle(statusRaw: string | null | undefined) {
   const s = (statusRaw || '').toLowerCase();
   switch (s) {
-    case 'guarnicao_empenhada': return { bg: '#7F1D1D', text: '#FECACA', icon: 'alert-circle-outline' };
-    case 'em_deslocamento': return { bg: '#78350F', text: '#FDE68A', icon: 'ambulance' };
-    case 'em_atendimento': return { bg: '#064E3B', text: '#A7F3D0', icon: 'medical-bag' };
-    case 'finalizada': return { bg: '#1F2937', text: '#D1D5DB', icon: 'check-circle-outline' };
-    case 'cancelada': return { bg: '#4C1D95', text: '#DDD6FE', icon: 'cancel' };
-    default: return { bg: '#172554', text: '#BFDBFE', icon: 'information-outline' };
+    case 'guarnicao_empenhada': return { bg: '#fee2e2', text: '#991b1b', icon: 'alert-circle-outline' };
+    case 'em_deslocamento': return { bg: '#fef3c7', text: '#92400e', icon: 'ambulance' };
+    case 'em_atendimento': return { bg: '#dcfce7', text: '#166534', icon: 'medical-bag' };
+    case 'finalizada': return { bg: '#e2e8f0', text: '#475569', icon: 'check-circle-outline' };
+    case 'cancelada': return { bg: '#ede9fe', text: '#5b21b6', icon: 'cancel' };
+    default: return { bg: '#e0f2fe', text: '#075985', icon: 'information-outline' };
   }
 }
 
@@ -294,10 +283,11 @@ export default function BombeiroDetalhe() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 12, color: colors.placeholder }}>Carregando detalhes da ocorrencia...</Text>
-      </View>
+      <LoadingState
+        title="Carregando atendimento"
+        subtitle="Buscando ocorrência, sinais vitais e relatos da equipe."
+        icon="truck-medical"
+      />
     );
   }
 
@@ -407,7 +397,7 @@ export default function BombeiroDetalhe() {
             <>
               <View style={styles.vitalsGrid}>
                 <VitalBox label="FC" value={formatNumber(ultimaLeitura.frequencia_cardiaca_bpm, ' bpm')} icon="heart-pulse" color={colors.danger} />
-                <VitalBox label="SpO2" value={formatNumber(ultimaLeitura.saturacao_spo2, '%')} icon="water-percent" color="#3B82F6" />
+                <VitalBox label="SpO2" value={formatNumber(ultimaLeitura.saturacao_spo2, '%')} icon="water-percent" color="#0284c7" />
                 <VitalBox label="Temp." value={formatNumber(ultimaLeitura.temperatura_c, ' °C')} icon="thermometer" color={colors.warning} />
               </View>
               <Text style={styles.cardLabel}>Última leitura: {formatDateTime(ultimaLeitura.coletado_em)}</Text>
@@ -448,7 +438,7 @@ export default function BombeiroDetalhe() {
               {alertas.map((alerta) => (
                 <View key={alerta.id} style={styles.alertCard}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                    <MaterialCommunityIcons name="alert" size={16} color="#FECACA" style={{ marginRight: 6 }} />
+                    <MaterialCommunityIcons name="alert" size={16} color="#991b1b" style={{ marginRight: 6 }} />
                     <Text style={styles.alertTitle}>{String(alerta.nivel || '').toUpperCase()} - {alerta.tipo}</Text>
                   </View>
                   <Text style={styles.alertMessage}>{alerta.mensagem}</Text>
@@ -616,16 +606,11 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 12,
+    borderRadius: colors.radiusLg,
     borderWidth: 1,
     borderColor: colors.border,
     padding: 18,
     marginBottom: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -651,7 +636,7 @@ const styles = StyleSheet.create({
   warningBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#450a0a',
+    backgroundColor: '#fee2e2',
     padding: 8,
     borderRadius: 6,
     marginTop: 8,
@@ -686,10 +671,10 @@ const styles = StyleSheet.create({
   vitalBox: {
     flex: 1,
     alignItems: 'center',
-    borderRadius: 10,
+    borderRadius: colors.radiusMd,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: '#020617',
+    backgroundColor: '#ffffff',
     paddingVertical: 12,
   },
   vitalLabel: {
@@ -706,8 +691,8 @@ const styles = StyleSheet.create({
   emptySensorsBox: {
     alignItems: 'center',
     paddingVertical: 20,
-    backgroundColor: '#020617',
-    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    borderRadius: colors.radiusMd,
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: 12,
@@ -716,31 +701,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#4F46E5',
-    borderRadius: 8,
+    backgroundColor: colors.secondaryAccent,
+    borderRadius: colors.radiusSm,
     paddingVertical: 12,
     marginTop: 8,
   },
   alertCard: {
-    borderRadius: 8,
+    borderRadius: colors.radiusSm,
     borderLeftWidth: 4,
     borderLeftColor: colors.danger,
-    backgroundColor: '#450A0A',
+    backgroundColor: '#fee2e2',
     padding: 12,
     marginTop: 8,
   },
   alertTitle: {
-    color: '#FECACA',
+    color: '#991b1b',
     fontSize: 13,
     fontWeight: '800',
   },
   alertMessage: {
-    color: '#FFFFFF',
+    color: '#991b1b',
     fontSize: 14,
     marginTop: 4,
   },
   alertInstruction: {
-    color: '#FCA5A5',
+    color: '#991b1b',
     fontSize: 13,
     marginTop: 8,
     fontStyle: 'italic',
@@ -752,7 +737,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderRadius: 10,
+    borderRadius: colors.radiusSm,
   },
   statusButtonText: {
     color: '#FFF',
@@ -762,16 +747,16 @@ const styles = StyleSheet.create({
   successBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#064E3B',
+    backgroundColor: '#dcfce7',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: colors.radiusSm,
     borderWidth: 1,
     borderColor: colors.success,
   },
   button: {
     backgroundColor: colors.primary,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: colors.radiusSm,
     alignItems: 'center',
     marginTop: 12,
   },
@@ -786,7 +771,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 12,
     backgroundColor: colors.primary,
-    borderRadius: 8,
+    borderRadius: colors.radiusSm,
     paddingVertical: 12,
   },
   buttonSecondaryText: {
@@ -799,7 +784,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 12,
-    borderRadius: 8,
+    borderRadius: colors.radiusSm,
     borderWidth: 1.5,
     borderColor: colors.primary,
     paddingVertical: 12,
@@ -811,13 +796,13 @@ const styles = StyleSheet.create({
   },
   textArea: {
     minHeight: 120,
-    borderRadius: 10,
+    borderRadius: colors.radiusMd,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: 14,
     paddingVertical: 12,
     color: colors.text,
-    backgroundColor: '#020617',
+    backgroundColor: '#ffffff',
     textAlignVertical: 'top',
     fontSize: 15,
   },
@@ -828,3 +813,5 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 });
+
+

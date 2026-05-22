@@ -1,19 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { supabase } from '../../backend/connectors/postgre';
-
-const colors = {
-  background: '#0F172A',
-  text: '#F9FAFB',
-  secondary: '#9CA3AF',
-  card: '#020617',
-  primary: '#2563EB',
-  border: '#1F2937',
-  warning: '#F59E0B',
-  success: '#22C55E',
-};
+import { colors } from '../shared/theme';
+import LoadingState from '../shared/LoadingState';
 
 function formatarData(dataISO?: string | null) {
   if (!dataISO) return 'Nao disponivel';
@@ -124,10 +115,11 @@ export default function DetalheRegistro({ route }: any) {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.center]}>
-        <ActivityIndicator color={colors.primary} size="large" />
-        <Text style={{ color: colors.secondary, marginTop: 12 }}>Atualizando ocorrencia...</Text>
-      </View>
+      <LoadingState
+        title="Atualizando ocorrência"
+        subtitle="Buscando detalhes, localização e histórico."
+        icon="location-dot"
+      />
     );
   }
 
@@ -196,9 +188,9 @@ export default function DetalheRegistro({ route }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 16, paddingTop: 12 },
+  container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 18, paddingTop: 14 },
   center: { justifyContent: 'center', alignItems: 'center' },
-  card: { backgroundColor: colors.card, borderRadius: 10, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: colors.border },
+  card: { backgroundColor: colors.card, borderRadius: colors.radiusLg, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: colors.border },
   statusHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   statusPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   statusText: { fontSize: 12, fontWeight: '800' },
@@ -207,11 +199,11 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.secondary, fontSize: 13, marginTop: 3 },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '800', marginBottom: 10 },
   value: { color: colors.text, fontSize: 14, lineHeight: 20 },
-  mapWrapper: { marginTop: 12, height: 220, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, backgroundColor: '#020617' },
+  mapWrapper: { marginTop: 12, height: 220, borderRadius: colors.radiusMd, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, backgroundColor: '#ffffff' },
   map: { flex: 1 },
   mapFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
   mapFallbackText: { color: colors.secondary, fontSize: 12, textAlign: 'center' },
-  routeButton: { marginTop: 12, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, borderRadius: 8, paddingVertical: 11 },
+  routeButton: { marginTop: 12, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, borderRadius: colors.radiusSm, paddingVertical: 11 },
   routeButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   timelineItem: { flexDirection: 'row', gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border },
   timelineDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
@@ -219,6 +211,7 @@ const styles = StyleSheet.create({
   timelineDate: { color: colors.secondary, fontSize: 12, marginTop: 2 },
   timelineObs: { color: colors.secondary, fontSize: 13, marginTop: 4 },
 });
+
 
 
 

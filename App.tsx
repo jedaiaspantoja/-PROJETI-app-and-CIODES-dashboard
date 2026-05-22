@@ -13,6 +13,7 @@ import DetalheRegistro from './frontend/detalheRegistro';
 import BombeiroDashboard from './frontend/bombeiro/BombeiroDashboard';
 import BombeiroDetalhe from './frontend/bombeiro/BombeiroDetalhe';
 import { initOfflineV2Schema, syncPendingOccurrencesV2 } from './backend/offline/offlineV2';
+import { colors } from './frontend/shared/theme';
 
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -34,11 +35,11 @@ export default function App() {
           id="RootStack"
           initialRouteName="Login"
           screenOptions={{
-            headerStyle: { backgroundColor: '#0F172A' },
-            headerTintColor: '#F9FAFB',
+            headerStyle: { backgroundColor: colors.card },
+            headerTintColor: colors.text,
             headerTitleStyle: { fontWeight: '700' },
             headerShadowVisible: false,
-            contentStyle: { backgroundColor: '#0F172A' },
+            contentStyle: { backgroundColor: colors.background },
           }}
         >
           <Stack.Screen name="Login" component={Login} options={{ headerShown: false }} />

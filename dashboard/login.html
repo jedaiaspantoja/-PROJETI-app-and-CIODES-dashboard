@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Login - Painel de Saúde e População</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="styles.css?v=20260520-1" />
+  </head>
+  <body>
+    <main class="login-page">
+      <section class="login-card" aria-labelledby="login-title">
+        <div class="login-header">
+          <div class="login-logo" aria-hidden="true">+</div>
+          <span class="eyebrow">Gestão pública de saúde</span>
+          <h1 id="login-title">Painel de Saúde e População</h1>
+          <p>Acesse sua conta para continuar</p>
+        </div>
+
+        <form id="loginForm">
+          <div class="form-group">
+            <label for="email">E-mail</label>
+            <input
+              type="email"
+              id="email"
+              required
+              placeholder="seu@email.gov.br"
+              autocomplete="email"
+            />
+          </div>
+          <div class="form-group">
+            <label for="senha">Senha</label>
+            <input
+              type="password"
+              id="senha"
+              required
+              placeholder="Digite sua senha"
+              autocomplete="current-password"
+            />
+          </div>
+          <button type="submit" class="btn btn-primary login-submit">
+            Entrar
+          </button>
+        </form>
+
+        <div class="login-footer">
+          <a href="#" id="forgot-password">Esqueceu a senha?</a>
+        </div>
+
+        <div id="loginErro" class="login-erro hidden" role="alert">
+          E-mail ou senha incorretos. Tente novamente.
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="login.js?v=20260520-1" defer></script>
+  </body>
+</html>

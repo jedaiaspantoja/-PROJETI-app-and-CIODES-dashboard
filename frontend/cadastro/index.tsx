@@ -11,16 +11,8 @@ import {
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { supabase } from '../../backend/connectors/postgre';
 import TopHeader from '../shared/TopHeader';
-
-const colors = {
-  background: '#0F172A',
-  text: '#F9FAFB',
-  border: '#1F2937',
-  card: '#020617',
-  placeholder: '#6B7280',
-  primary: '#2563EB',
-  danger: '#EF4444',
-};
+import { colors } from '../shared/theme';
+import { useResponsiveLayout } from '../shared/responsive';
 
 type CadastroProps = {
   navigation: any;
@@ -72,6 +64,7 @@ export function isValidCpf(rawCpf: string): boolean {
 }
 
 export default function Cadastro({ navigation, route }: CadastroProps) {
+  const layout = useResponsiveLayout();
   const papel = route?.params?.papel === 'socorrista' ? 'socorrista' : 'solicitante';
   const isSocorrista = papel === 'socorrista';
 
@@ -253,11 +246,23 @@ export default function Cadastro({ navigation, route }: CadastroProps) {
     <View style={styles.container}>
       <TopHeader title="Cadastro" />
       <KeyboardAwareScrollView 
-        contentContainerStyle={styles.scrollContent} 
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingHorizontal: layout.horizontalPadding },
+        ]} 
         keyboardShouldPersistTaps="handled"
         enableOnAndroid={true}
       >
-        <View style={styles.card}>
+        <View
+          style={[
+            styles.card,
+            {
+              maxWidth: layout.maxContentWidth,
+              alignSelf: 'center',
+              width: '100%',
+            },
+          ]}
+        >
           <Text style={styles.title}>Criar conta</Text>
           <Text style={styles.subtitle}>
             {isSocorrista ? 'Informe seus dados profissionais e selecione sua guarnicao.' : 'Preencha seus dados para se cadastrar.'}
@@ -374,39 +379,41 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingVertical: 24,
     justifyContent: 'center',
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 10,
-    padding: 20,
+    borderRadius: colors.radiusLg,
+    padding: 18,
     borderWidth: 1,
     borderColor: colors.border,
   },
   title: {
     color: colors.text,
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 4,
+    fontSize: 26,
+    fontWeight: '800',
+    marginBottom: 6,
   },
   subtitle: {
     color: colors.placeholder,
     fontSize: 14,
-    marginBottom: 16,
+    marginBottom: 18,
+    lineHeight: 20,
   },
   formGroup: {
     marginBottom: 12,
   },
   label: {
     color: colors.text,
-    fontSize: 14,
-    marginBottom: 4,
+    fontSize: 13,
+    marginBottom: 6,
+    fontWeight: '800',
   },
   input: {
-    backgroundColor: '#020617',
-    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: colors.radiusSm,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: 12,
@@ -432,16 +439,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   guarnicaoOption: {
-    borderRadius: 8,
+    borderRadius: colors.radiusMd,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: '#020617',
+    backgroundColor: '#ffffff',
   },
   guarnicaoOptionActive: {
     borderColor: colors.primary,
-    backgroundColor: '#172554',
+    backgroundColor: colors.primarySoft,
   },
   guarnicaoTitle: {
     color: colors.text,
@@ -449,7 +456,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   guarnicaoTitleActive: {
-    color: '#BFDBFE',
+    color: '#075985',
   },
   guarnicaoSubtitle: {
     color: colors.placeholder,
@@ -459,7 +466,7 @@ const styles = StyleSheet.create({
   button: {
     marginTop: 12,
     backgroundColor: colors.primary,
-    borderRadius: 999,
+    borderRadius: colors.radiusSm,
     paddingVertical: 14,
     alignItems: 'center',
   },
@@ -481,3 +488,5 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
+

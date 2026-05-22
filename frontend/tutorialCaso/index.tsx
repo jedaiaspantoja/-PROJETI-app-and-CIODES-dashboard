@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Button,
   Image,
   ScrollView,
@@ -17,19 +16,8 @@ import { supabase } from '../../backend/connectors/postgre';
 import { cacheReferenceDataV2, executeOfflineSelect } from '../../backend/offline/offlineV2';
 import TopHeader from '../shared/TopHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const colors = {
-  background: '#0F172A',
-  text: '#F9FAFB',
-  secondary: '#CBD5E1',
-  placeholder: '#94A3B8',
-  card: '#020617',
-  cardSoft: '#111827',
-  primary: '#2563EB',
-  success: '#22C55E',
-  warning: '#F59E0B',
-  border: '#1E293B',
-};
+import { colors } from '../shared/theme';
+import LoadingState from '../shared/LoadingState';
 
 type StepUI = {
   texto: string;
@@ -341,10 +329,11 @@ export default function TutorialCaso({ route, navigation }: any) {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 12, color: colors.secondary }}>Carregando tutorial...</Text>
-      </View>
+      <LoadingState
+        title="Preparando tutorial"
+        subtitle="Organizando passos, mídias e orientação por voz."
+        icon="book-medical"
+      />
     );
   }
 
@@ -359,7 +348,10 @@ export default function TutorialCaso({ route, navigation }: any) {
       stopSpeech();
     } else {
       stopSpeech();
-      navigation.goBack();
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Home' }],
+      });
     }
   };
 
@@ -463,7 +455,7 @@ const styles = StyleSheet.create({
   },
   protocolBox: {
     width: '100%',
-    borderRadius: 10,
+    borderRadius: colors.radiusMd,
     borderWidth: 1,
     borderColor: colors.primary,
     backgroundColor: colors.card,
@@ -489,7 +481,7 @@ const styles = StyleSheet.create({
   iconBadge: {
     width: 48,
     height: 48,
-    borderRadius: 12,
+    borderRadius: colors.radiusMd,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
@@ -507,7 +499,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 14,
+    borderRadius: colors.radiusLg,
     width: '100%',
     borderWidth: 1,
     borderColor: colors.border,
@@ -562,7 +554,7 @@ const styles = StyleSheet.create({
   secondaryButton: {
     flex: 1,
     minHeight: 48,
-    borderRadius: 10,
+    borderRadius: colors.radiusSm,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
@@ -578,7 +570,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     flex: 1,
     minHeight: 48,
-    borderRadius: 10,
+    borderRadius: colors.radiusSm,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -609,3 +601,4 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 });
+
