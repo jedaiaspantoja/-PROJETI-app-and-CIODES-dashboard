@@ -7,7 +7,6 @@ import {
   Text,
   TouchableOpacity,
   View,
-  Platform,
 } from 'react-native';
 import { FontAwesome6 } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
@@ -24,6 +23,7 @@ type StepUI = {
   objetivo?: string;
   midia_url?: string | null;
   midia_tipo?: string | null;
+  tipo_vitima_id?: number | string | null;
 };
 
 type TrainingGuide = {
@@ -56,6 +56,63 @@ function isVideoMedia(uri?: string | null, tipo?: string | null) {
   return normalizedType.includes('video') || /\.(mp4|mov|m4v|webm)$/.test(normalizedUri);
 }
 
+function normalizeMediaType(uri?: string | null, tipo?: string | null) {
+  if (isVideoMedia(uri, tipo)) return 'video';
+  const normalizedType = normalizeKey(tipo);
+  if (normalizedType.includes('lottie')) return 'lottie';
+  if (normalizedType.includes('image') || normalizedType.includes('imagem')) return 'imagem';
+  return tipo || (uri ? 'imagem' : null);
+}
+
+function sameVictimType(stepVictimId?: number | string | null, tipoVitimaId?: number | string | null) {
+  return !stepVictimId || !tipoVitimaId || String(stepVictimId) === String(tipoVitimaId);
+}
+
+function mapStepRow(row: any): StepUI {
+  const mediaUrl = row.midia_url ?? row.midia_ref?.url ?? row.midia?.url ?? row.url ?? null;
+  const mediaType = normalizeMediaType(mediaUrl, row.midia_tipo ?? row.midia_ref?.tipo ?? row.midia?.tipo ?? null);
+
+  return {
+    texto: row.texto,
+    midia_url: mediaUrl,
+    midia_tipo: mediaType,
+    tipo_vitima_id: row.tipo_vitima_id ?? row.id_tipo_vitim ?? null,
+  };
+}
+
+function toOfflinePasso(row: any, tutorialId: string | number) {
+  return {
+    id: String(row.id ?? row.id_step ?? `${tutorialId}-${row.ordem}`),
+    tutorial_id: String(row.tutorial_id ?? row.id_tutorial ?? tutorialId),
+    tipo_vitima_id: row.tipo_vitima_id ?? row.id_tipo_vitim ?? null,
+    ordem: row.ordem ?? 0,
+    texto: row.texto,
+    midia_url: row.midia_url ?? row.midia_ref?.url ?? row.midia?.url ?? row.url ?? null,
+    midia_tipo: normalizeMediaType(row.midia_url ?? row.midia_ref?.url ?? row.midia?.url ?? row.url ?? null, row.midia_tipo),
+  };
+}
+
+async function loadRemoteTutorialSteps(tutorialId: string | number) {
+  const { data, error } = await supabase
+    .from('tutorial_passos')
+    .select('id, tutorial_id, texto, ordem, tipo_vitima_id, midia_url, midia_tipo')
+    .eq('tutorial_id', tutorialId)
+    .order('ordem', { ascending: true });
+
+  if (error) throw error;
+  return (data || []) as any[];
+}
+
+async function loadOfflineTutorialSteps(tutorialId: string | number) {
+  return executeOfflineSelect<any>(
+    `SELECT id, tutorial_id, texto, ordem, tipo_vitima_id, midia_url, midia_tipo
+     FROM tutorial_passos
+     WHERE tutorial_id = ?
+     ORDER BY ordem ASC`,
+    [tutorialId]
+  );
+}
+
 function StepMedia({ uri, tipo }: { uri: string; tipo?: string | null }) {
   const isVideo = isVideoMedia(uri, tipo);
   const player = useVideoPlayer(isVideo ? { uri } : null, (instance) => {
@@ -70,14 +127,14 @@ function StepMedia({ uri, tipo }: { uri: string; tipo?: string | null }) {
       player.currentTime = 0;
       player.play();
     } catch (error) {
-      console.warn('[TutorialCaso] Nao foi possivel iniciar o video automaticamente:', error);
+      console.warn('[TutorialCaso] Não foi possível iniciar o vídeo automaticamente:', error);
     }
 
     return () => {
       try {
         player.pause();
       } catch {
-        // O expo-video pode liberar o objeto nativo antes do cleanup em trocas rapidas de passo.
+        // O expo-video pode liberar o objeto nativo antes do cleanup em trocas rápidas de passo.
       }
     };
   }, [isVideo, player, uri]);
@@ -102,39 +159,39 @@ const TRAINING_GUIDES: TrainingGuide[] = [
     key: 'engasgo',
     icon: 'lungs',
     imageUrl: 'https://images.unsplash.com/photo-1584515933487-779824d29309?auto=format&fit=crop&w=900&q=80',
-    focus: 'Reconhecer obstrucao de vias aereas e agir sem piorar a situacao.',
+    focus: 'Reconhecer sinais de engasgo e agir com segurança sem piorar a obstrução.',
     steps: [
-      { objetivo: 'Reconhecer', texto: 'Observe se a pessoa consegue tossir, falar ou respirar. Se ela tosse forte, incentive a tossir e acompanhe de perto.' },
-      { objetivo: 'Pedir ajuda', texto: 'Chame ajuda imediatamente e acione o servico de emergencia. Informe que ha suspeita de engasgo e diga a idade aproximada da vitima.' },
-      { objetivo: 'Desobstruir', texto: 'Se a pessoa nao respira nem fala, posicione-se atras dela e realize compressoes abdominais firmes, para dentro e para cima, ate o objeto sair ou a vitima perder a consciencia.' },
-      { objetivo: 'Evitar dano', texto: 'Nao coloque o dedo as cegas na boca. Remova apenas objeto visivel e facil de alcancar.' },
-      { objetivo: 'Se piorar', texto: 'Se a vitima desmaiar, deite-a em superficie firme, acione ajuda novamente e inicie o protocolo de RCP se souber executar.' },
+      { objetivo: 'Reconhecer', texto: 'Observe se a pessoa consegue tossir, falar ou respirar. Se ela tosse com força, incentive a tosse e acompanhe de perto.' },
+      { objetivo: 'Pedir ajuda', texto: 'Chame ajuda imediatamente e acione o serviço de emergência. Informe a suspeita de engasgo e a idade aproximada da vítima.' },
+      { objetivo: 'Desobstruir', texto: 'Se a pessoa não consegue respirar nem falar, posicione-se atrás dela e faça compressões abdominais firmes, para dentro e para cima.' },
+      { objetivo: 'Evitar dano', texto: 'Não coloque os dedos às cegas na boca. Remova apenas objetos visíveis e fáceis de alcançar.' },
+      { objetivo: 'Se piorar', texto: 'Se a vítima perder a consciência, deite-a em superfície firme, acione ajuda novamente e inicie RCP se souber executar.' },
     ],
   },
   {
     key: 'rcp parada cardiorrespiratoria cardiorrespiratoria',
     icon: 'heart-pulse',
     imageUrl: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?auto=format&fit=crop&w=900&q=80',
-    focus: 'Identificar parada, pedir ajuda e iniciar suporte basico ate a equipe chegar.',
+    focus: 'Identificar parada cardiorrespiratória, pedir ajuda e iniciar suporte básico até a equipe chegar.',
     steps: [
-      { objetivo: 'Seguranca', texto: 'Verifique se o local e seguro. Aproxime-se, toque nos ombros da pessoa e chame em voz alta para avaliar resposta.' },
-      { objetivo: 'Respiracao', texto: 'Observe o peito por ate 10 segundos. Se nao respira ou respira de forma anormal, trate como parada cardiorrespiratoria.' },
-      { objetivo: 'Acionar suporte', texto: 'Peça para alguem ligar para a emergencia e buscar um DEA, se houver. Se estiver sozinho, acione o viva-voz antes de iniciar.' },
-      { objetivo: 'Compressao', texto: 'Com as maos no centro do torax, faca compressoes fortes e rapidas, permitindo o retorno do peito entre elas. Evite interrupcoes.' },
-      { objetivo: 'DEA', texto: 'Se houver DEA, ligue o aparelho e siga as instrucoes de voz. Continue ate a equipe assumir, a vitima reagir ou o local deixar de ser seguro.' },
+      { objetivo: 'Segurança', texto: 'Verifique se o local é seguro. Aproxime-se, toque nos ombros da pessoa e chame em voz alta para avaliar resposta.' },
+      { objetivo: 'Respiração', texto: 'Observe o tórax por até 10 segundos. Se a pessoa não respira ou respira de forma anormal, trate como parada cardiorrespiratória.' },
+      { objetivo: 'Acionar suporte', texto: 'Peça para alguém acionar a emergência e buscar um DEA, se houver. Se estiver sozinho, use o viva-voz antes de iniciar.' },
+      { objetivo: 'Compressões', texto: 'Posicione as mãos no centro do tórax e faça compressões fortes e rápidas. Permita o retorno do peito entre elas.' },
+      { objetivo: 'Continuar', texto: 'Continue até a equipe assumir, a vítima reagir, o DEA orientar outra ação ou o local deixar de ser seguro.' },
     ],
   },
   {
     key: 'afogamento',
     icon: 'water',
     imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80',
-    focus: 'Proteger o socorrista, retirar da agua com seguranca e avaliar respiracao.',
+    focus: 'Proteger o socorrista, retirar a vítima da água com segurança e avaliar a respiração.',
     steps: [
-      { objetivo: 'Nao virar vitima', texto: 'Nao entre na agua se isso colocar voce em risco. Use boia, corda, galho, toalha ou outro objeto para aproximar apoio.' },
-      { objetivo: 'Retirada', texto: 'Ao retirar a pessoa, mantenha-a deitada e avalie rapidamente consciencia e respiracao.' },
-      { objetivo: 'Chamar ajuda', texto: 'Acione a emergencia e informe local exato, tempo aproximado de submersao e estado da vitima.' },
-      { objetivo: 'Respiracao', texto: 'Se respira, coloque de lado se nao houver suspeita forte de trauma e mantenha aquecida. Observe piora.' },
-      { objetivo: 'Sem respiracao', texto: 'Se nao respira normalmente, inicie suporte basico/RCP se souber executar e siga as orientacoes do atendimento por telefone.' },
+      { objetivo: 'Não virar vítima', texto: 'Não entre na água se isso colocar você em risco. Use boia, corda, galho, toalha ou outro objeto para aproximar apoio.' },
+      { objetivo: 'Retirada', texto: 'Após retirar a pessoa da água, mantenha-a deitada e avalie rapidamente consciência e respiração.' },
+      { objetivo: 'Chamar ajuda', texto: 'Acione a emergência e informe o local exato, o tempo aproximado de submersão e o estado da vítima.' },
+      { objetivo: 'Respiração', texto: 'Se a vítima respira, coloque-a de lado se não houver suspeita forte de trauma. Mantenha-a aquecida e observe sinais de piora.' },
+      { objetivo: 'Sem respiração', texto: 'Se não respira normalmente, inicie suporte básico/RCP se souber executar e siga as orientações recebidas por telefone.' },
     ],
   },
   {
@@ -143,24 +200,24 @@ const TRAINING_GUIDES: TrainingGuide[] = [
     imageUrl: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=900&q=80',
     focus: 'Proteger a pessoa durante a crise e reconhecer sinais de gravidade.',
     steps: [
-      { objetivo: 'Proteger', texto: 'Afaste objetos duros, pontiagudos ou quentes. Apoie a cabeca com algo macio, sem segurar o corpo a forca.' },
-      { objetivo: 'Cronometrar', texto: 'Marque o tempo da crise. Essa informacao ajuda muito a equipe de atendimento.' },
-      { objetivo: 'Nao fazer', texto: 'Nao coloque nada na boca, nao ofereca agua, comida ou remedio durante a crise.' },
-      { objetivo: 'Depois da crise', texto: 'Quando os movimentos cessarem, deixe a pessoa de lado se estiver respirando e acompanhe ate recuperar orientacao.' },
-      { objetivo: 'Emergencia', texto: 'Acione ajuda se durar mais de 5 minutos, repetir em sequencia, houver trauma, gravidez, diabetes, afogamento ou se for a primeira crise conhecida.' },
+      { objetivo: 'Proteger', texto: 'Afaste objetos duros, pontiagudos ou quentes. Apoie a cabeça com algo macio, sem segurar o corpo à força.' },
+      { objetivo: 'Cronometrar', texto: 'Marque o tempo da crise. Essa informação ajuda muito a equipe de atendimento.' },
+      { objetivo: 'Não fazer', texto: 'Não coloque nada na boca e não ofereça água, comida ou remédio durante a crise.' },
+      { objetivo: 'Depois da crise', texto: 'Quando os movimentos cessarem, deixe a pessoa de lado se estiver respirando e acompanhe até recuperar a orientação.' },
+      { objetivo: 'Emergência', texto: 'Acione ajuda se a crise durar mais de 5 minutos, repetir em sequência, houver trauma, gravidez, diabetes, afogamento ou se for a primeira crise conhecida.' },
     ],
   },
   {
     key: 'trauma queda colisao corte',
     icon: 'kit-medical',
     imageUrl: 'https://images.unsplash.com/photo-1603398938378-e54eab446dde?auto=format&fit=crop&w=900&q=80',
-    focus: 'Controlar riscos imediatos sem movimentar a vitima desnecessariamente.',
+    focus: 'Controlar riscos imediatos sem movimentar a vítima desnecessariamente.',
     steps: [
-      { objetivo: 'Cena segura', texto: 'Avalie transito, eletricidade, fogo, queda de objetos e violencia. So se aproxime se for seguro.' },
-      { objetivo: 'Nao mover', texto: 'Evite movimentar a vitima, principalmente se houver queda, colisao, dor no pescoco, formigamento ou confusao.' },
-      { objetivo: 'Sangramento', texto: 'Se houver sangramento intenso, pressione o local com pano limpo ou gaze, mantendo pressao continua.' },
-      { objetivo: 'Consciencia', texto: 'Converse com a vitima, observe respiracao, cor da pele, nivel de consciencia e dor. Anote mudancas.' },
-      { objetivo: 'Aguardar com acao', texto: 'Mantenha a vitima aquecida, sinalize o local e transmita ao socorro o mecanismo do trauma e o que mudou desde o inicio.' },
+      { objetivo: 'Cena segura', texto: 'Avalie trânsito, eletricidade, fogo, queda de objetos e violência. Só se aproxime se o local for seguro.' },
+      { objetivo: 'Não mover', texto: 'Evite movimentar a vítima, principalmente se houver queda, colisão, dor no pescoço, formigamento ou confusão.' },
+      { objetivo: 'Sangramento', texto: 'Se houver sangramento intenso, pressione o local com pano limpo ou gaze, mantendo pressão contínua.' },
+      { objetivo: 'Consciência', texto: 'Converse com a vítima e observe respiração, cor da pele, nível de consciência e dor. Anote mudanças.' },
+      { objetivo: 'Aguardar com ação', texto: 'Mantenha a vítima aquecida, sinalize o local e informe ao socorro o mecanismo do trauma e o que mudou desde o início.' },
     ],
   },
 ];
@@ -173,12 +230,12 @@ function getTrainingGuide(title?: string, codigo?: string): TrainingGuide {
       key: 'geral',
       icon: 'hand-holding-medical',
       imageUrl: 'https://images.unsplash.com/photo-1584362917165-526a968579e8?auto=format&fit=crop&w=900&q=80',
-      focus: 'Treinar avaliacao inicial, acionamento correto e acompanhamento seguro.',
+      focus: 'Treinar avaliação inicial, acionamento correto e acompanhamento seguro.',
       steps: [
-        { objetivo: 'Seguranca', texto: 'Antes de agir, confirme se o ambiente esta seguro para voce, para a vitima e para outras pessoas.' },
-        { objetivo: 'Avaliar', texto: 'Tente conversar com a vitima, observe respiracao, consciencia, sangramentos e sinais de piora.' },
-        { objetivo: 'Acionar ajuda', texto: 'Ligue para a emergencia e informe local, tipo de ocorrencia, quantidade de vitimas e riscos presentes.' },
-        { objetivo: 'Acompanhar', texto: 'Permaneça por perto se for seguro, reavalie a vitima e atualize a equipe sobre qualquer mudanca.' },
+        { objetivo: 'Segurança', texto: 'Antes de agir, confirme se o ambiente está seguro para você, para a vítima e para outras pessoas ao redor.' },
+        { objetivo: 'Avaliar', texto: 'Tente conversar com a vítima. Observe respiração, consciência, sangramentos e sinais de piora.' },
+        { objetivo: 'Acionar ajuda', texto: 'Ligue para a emergência e informe local, tipo de ocorrência, quantidade de vítimas e riscos presentes.' },
+        { objetivo: 'Acompanhar', texto: 'Permaneça por perto se for seguro, reavalie a vítima e atualize a equipe sobre qualquer mudança.' },
       ],
     }
   );
@@ -192,15 +249,14 @@ function isWeakTrainingContent(steps: StepUI[]) {
 }
 
 function getRealEmergencyFallbackSteps(title: string | undefined): StepUI[] {
-  const nome = title || 'ocorrencia';
+  const nome = title || 'ocorrência';
   return [
-    { objetivo: 'Seguranca', texto: `Mantenha a calma e garanta a seguranca do local antes de se aproximar da vitima de ${nome}.` },
-    { objetivo: 'Ajuda', texto: 'Acione ou aguarde o atendimento especializado. Nao movimente a vitima sem necessidade.' },
-    { objetivo: 'Observacao', texto: 'Observe respiracao, consciencia e sinais de agravamento. Siga as orientacoes do CIODES.' },
-    { objetivo: 'Acompanhamento', texto: 'Permaneça ao lado da vitima ate a chegada da equipe de socorro, se for seguro.' },
+    { objetivo: 'Segurança', texto: `Mantenha a calma e garanta a segurança do local antes de se aproximar da vítima de ${nome}.` },
+    { objetivo: 'Ajuda', texto: 'Acione ou aguarde o atendimento especializado. Não movimente a vítima sem necessidade.' },
+    { objetivo: 'Observação', texto: 'Observe respiração, consciência e sinais de agravamento. Siga as orientações do CIODES.' },
+    { objetivo: 'Acompanhamento', texto: 'Permaneça ao lado da vítima até a chegada da equipe de socorro, se for seguro.' },
   ];
 }
-
 export default function TutorialCaso({ route, navigation }: any) {
   const { tutorialId, tipoVitimaId, title, codigo, protocolo, ocorrenciaId } = route?.params || {};
 
@@ -259,41 +315,16 @@ export default function TutorialCaso({ route, navigation }: any) {
           return;
         }
 
-        const { data, error } = await supabase
-          .from('tutorial_passos')
-          .select('id, tutorial_id, texto, ordem, tipo_vitima_id, midia_url, midia_tipo')
-          .eq('tutorial_id', tutorialId)
-          .order('ordem', { ascending: true });
+        let rows: any[] = [];
 
-        if (error) {
-          console.error('[TutorialCaso] Erro Supabase:', error);
-          const offlineRows = await executeOfflineSelect<any>(
-            `SELECT texto, tipo_vitima_id, midia_url, midia_tipo
-             FROM tutorial_passos
-             WHERE tutorial_id = ?
-             ORDER BY ordem ASC`,
-            [tutorialId]
-          );
-          const offlineFiltered = offlineRows.filter(
-            (step) => !step.tipo_vitima_id || !tipoVitimaId || step.tipo_vitima_id === tipoVitimaId
-          );
-          const mapped = offlineFiltered.map((s) => ({
-            texto: s.texto,
-            midia_url: s.midia_url ?? null,
-            midia_tipo: s.midia_tipo ?? null,
-          }));
-          setSteps(!isRealEmergency && isWeakTrainingContent(mapped) ? guide.steps : mapped.length ? mapped : getRealEmergencyFallbackSteps(title));
-          return;
+        try {
+          rows = await loadRemoteTutorialSteps(tutorialId);
+        } catch (error) {
+          console.warn('[TutorialCaso] Não foi possível buscar tutorial_passos no Supabase, usando cache offline:', error);
+          rows = await loadOfflineTutorialSteps(tutorialId);
         }
 
-        const filtered = ((data as any[]) || []).filter(
-          (step) => !step.tipo_vitima_id || !tipoVitimaId || step.tipo_vitima_id === tipoVitimaId
-        );
-        const mapped = filtered.map((s) => ({
-          texto: s.texto,
-          midia_url: s.midia_url ?? null,
-          midia_tipo: s.midia_tipo ?? null,
-        }));
+        const mapped = rows.filter((step) => sameVictimType(step.tipo_vitima_id ?? step.id_tipo_vitim, tipoVitimaId)).map(mapStepRow);
 
         if (!isRealEmergency && isWeakTrainingContent(mapped)) {
           setSteps(guide.steps);
@@ -301,7 +332,7 @@ export default function TutorialCaso({ route, navigation }: any) {
           setSteps(mapped.length ? mapped : isRealEmergency ? getRealEmergencyFallbackSteps(title) : guide.steps);
         }
 
-        await cacheReferenceDataV2({ passos: data || [] });
+        await cacheReferenceDataV2({ passos: rows.map((row) => toOfflinePasso(row, tutorialId)) });
         setIndex(0);
         didAutoSpeakOnceRef.current = false;
       } catch (e) {
@@ -317,14 +348,16 @@ export default function TutorialCaso({ route, navigation }: any) {
 
   useEffect(() => {
     if (!isRealEmergency || loading || !steps.length) return;
+    const currentStep = steps[index];
+    if (isVideoMedia(currentStep?.midia_url, currentStep?.midia_tipo)) return;
 
     if (!didAutoSpeakOnceRef.current) {
       didAutoSpeakOnceRef.current = true;
-      speak(steps[0]?.texto || '');
+      speak(currentStep?.texto || '');
       return;
     }
 
-    speak(steps[index]?.texto || '');
+    speak(currentStep?.texto || '');
   }, [isRealEmergency, loading, steps, index, speak]);
 
   if (loading) {
@@ -374,7 +407,7 @@ export default function TutorialCaso({ route, navigation }: any) {
   if (!atual) {
     return (
       <View style={styles.center}>
-        <Text style={styles.stepText}>Nenhum passo disponivel para este perfil.</Text>
+        <Text style={styles.stepText}>Nenhum passo disponível para este perfil.</Text>
         <View style={{ marginTop: 16 }} />
         <Button title="Voltar" onPress={() => navigation.goBack()} color={colors.primary} />
       </View>
@@ -398,7 +431,7 @@ export default function TutorialCaso({ route, navigation }: any) {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>{title || 'Tutorial de Atendimento'}</Text>
-            <Text style={styles.subtitle}>{isRealEmergency ? 'Emergencia real' : guide.focus}</Text>
+            <Text style={styles.subtitle}>{isRealEmergency ? 'Emergência real' : guide.focus}</Text>
           </View>
         </View>
 
@@ -527,18 +560,18 @@ const styles = StyleSheet.create({
     color: colors.secondary,
   },
   objective: {
-    marginTop: 14,
-    marginHorizontal: 18,
+    marginTop: 16,
+    marginHorizontal: 16,
     color: colors.success,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
   },
   stepText: {
-    marginTop: 8,
-    marginHorizontal: 18,
+    marginTop: 10,
+    marginHorizontal: 16,
     marginBottom: 18,
-    fontSize: 18,
-    lineHeight: 27,
+    fontSize: 16,
+    lineHeight: 24,
     color: colors.text,
   },
   buttons: {
