@@ -19,6 +19,17 @@ type Props = {
   navigation: any;
 };
 
+
+type UsuarioLogin = {
+  id: string;
+  auth_user_id: string | null;
+  nome: string;
+  email: string | null;
+  cpf_matricula: string | null;
+  telefone: string | null;
+  papel: string;
+  ativo: boolean;
+};
 function onlyDigits(value: string) {
   return value.replace(/\D/g, '');
 }
@@ -43,11 +54,10 @@ export default function Login({ navigation }: Props) {
       setLoading(true);
 
       const { data, error } = await supabase
-        .from('usuarios')
-        .select('id, auth_user_id, nome, email, cpf_matricula, telefone, papel, ativo')
-        .eq('cpf_matricula', documento)
-        .eq('ativo', true)
+        .rpc('lookup_usuario_login', { documento_input: documento })
         .maybeSingle();
+
+      const usuario = data as UsuarioLogin | null;
 
       if (error) {
         console.error('[Login] Erro Supabase:', error);
@@ -55,17 +65,17 @@ export default function Login({ navigation }: Props) {
         return;
       }
 
-      if (!data) {
+      if (!usuario) {
         Alert.alert('Credenciais inválidas', 'Usuário ou senha incorretos.');
         return;
       }
 
-      if (!data.email) {
+      if (!usuario.email) {
         Alert.alert('Conta incompleta', 'Esta conta não possui email para autenticação.');
         return;
       }
 
-      if (!data.auth_user_id) {
+      if (!usuario.auth_user_id) {
         Alert.alert(
           'Conta sem Auth',
           'Este cadastro existe no banco, mas ainda não possui login no Supabase Auth. Cadastre-se novamente para vincular a senha.'
@@ -73,18 +83,18 @@ export default function Login({ navigation }: Props) {
         return;
       }
 
-      if (isSocorrista && data.papel !== 'socorrista') {
+      if (isSocorrista && usuario.papel !== 'socorrista') {
         Alert.alert('Acesso negado', 'Esta conta não está cadastrada como socorrista.');
         return;
       }
 
-      if (!isSocorrista && data.papel !== 'solicitante') {
+      if (!isSocorrista && usuario.papel !== 'solicitante') {
         Alert.alert('Acesso incorreto', 'Use o modo de acesso correto para esta conta.');
         return;
       }
 
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email: data.email,
+        email: usuario.email,
         password: senha.trim(),
       });
 
@@ -94,7 +104,7 @@ export default function Login({ navigation }: Props) {
         return;
       }
 
-      setCurrentUser(data as any);
+      setCurrentUser(usuario as any);
       navigation.reset({
         index: 0,
         routes: [{ name: isSocorrista ? 'BombeiroDashboard' : 'Home' }],

@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Login from './frontend/login';
 import Cadastro from './frontend/cadastro';
 import Home from './frontend/home';
+import Perfil from './frontend/perfil';
 import ListaCasos from './frontend/listaCasos';
 import TipoVitima from './frontend/tipoVitima';
 import TutorialCaso from './frontend/tutorialCaso';
@@ -45,6 +46,7 @@ export default function App() {
           <Stack.Screen name="Login" component={Login} options={{ headerShown: false }} />
           <Stack.Screen name="Cadastro" component={Cadastro} options={{ headerShown: false }} />
           <Stack.Screen name="Home" component={Home} options={{ headerShown: false }} />
+          <Stack.Screen name="Perfil" component={Perfil} options={{ headerShown: false }} />
           <Stack.Screen name="ListaCasos" component={ListaCasos} options={{ headerShown: false }} />
           <Stack.Screen name="TipoVitima" component={TipoVitima} options={{ headerShown: false }} />
           <Stack.Screen name="TutorialCaso" component={TutorialCaso} options={{ headerShown: false }} />

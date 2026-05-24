@@ -19,6 +19,12 @@ type CadastroProps = {
   route?: any;
 };
 
+
+type UsuarioLogin = {
+  id: string;
+  auth_user_id: string | null;
+  papel: string;
+};
 type Guarnicao = {
   id: string;
   nome: string | null;
@@ -127,10 +133,10 @@ export default function Cadastro({ navigation, route }: CadastroProps) {
     setLoading(true);
     try {
       const { data: existingProfile, error: existingProfileError } = await supabase
-        .from('usuarios')
-        .select('id, auth_user_id, papel')
-        .eq('cpf_matricula', documentoLimpo)
+        .rpc('lookup_usuario_login', { documento_input: documentoLimpo })
         .maybeSingle();
+
+      const existingUsuario = existingProfile as UsuarioLogin | null;
 
       if (existingProfileError) {
         console.error('[Cadastro] erro ao verificar perfil existente:', existingProfileError);
@@ -138,12 +144,12 @@ export default function Cadastro({ navigation, route }: CadastroProps) {
         return;
       }
 
-      if (existingProfile?.auth_user_id) {
+      if (existingUsuario?.auth_user_id) {
         Alert.alert('Conta ja cadastrada', 'Este documento ja possui uma conta. Volte para o login.');
         return;
       }
 
-      if (existingProfile && existingProfile.papel !== papel) {
+      if (existingUsuario && existingUsuario.papel !== papel) {
         Alert.alert('Cadastro divergente', 'Este documento ja esta cadastrado em outro tipo de acesso.');
         return;
       }
@@ -173,14 +179,13 @@ export default function Cadastro({ navigation, route }: CadastroProps) {
         email: email.trim().toLowerCase(),
         cpf_matricula: documentoLimpo,
         telefone: telefone.trim() || null,
-        senha_hash: null,
       };
 
-      const profileRequest = existingProfile
+      const profileRequest = existingUsuario
         ? supabase
             .from('usuarios')
             .update(profilePayload)
-            .eq('id', existingProfile.id)
+            .eq('id', existingUsuario.id)
             .select('id')
             .single()
         : supabase

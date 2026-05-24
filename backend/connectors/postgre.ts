@@ -58,7 +58,6 @@ export type User = {
   email_user: string | null;
   cpf_matricula: string | null;
   telefone: string | null;
-  senha: string | null;
   created_at: string | null;
   updated_at: string | null;
 };

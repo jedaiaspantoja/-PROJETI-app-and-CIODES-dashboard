@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS usuarios (
   email TEXT UNIQUE,
   cpf_matricula TEXT UNIQUE,
   telefone TEXT,
-  senha_hash TEXT,
   papel TEXT NOT NULL CHECK (papel IN ('solicitante', 'socorrista', 'ciodes', 'admin')),
   ativo BOOLEAN NOT NULL DEFAULT TRUE,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),

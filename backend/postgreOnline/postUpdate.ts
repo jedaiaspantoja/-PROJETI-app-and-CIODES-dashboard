@@ -32,7 +32,6 @@ export type UpdateUser = {
   email_user: string;
   cpf_matricula: string; // ✅ no seu schema é TEXT
   telefone: string | null;
-  senha: string;
   cat_user_id: number | null;
   id_guarnicao_padrao: number | null;
 }>;

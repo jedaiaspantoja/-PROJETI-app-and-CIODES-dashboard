@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -47,7 +47,7 @@ export default function TopHeader({ title = '' }: TopHeaderProps) {
 
       <TouchableOpacity 
         style={styles.button} 
-        onPress={() => Alert.alert('Perfil', 'Abrindo configuração do perfil / Logout')}
+        onPress={() => navigation.navigate('Perfil' as never)}
       >
         <MaterialCommunityIcons name="account-circle" size={28} color={colors.secondaryAccent} />
       </TouchableOpacity>
