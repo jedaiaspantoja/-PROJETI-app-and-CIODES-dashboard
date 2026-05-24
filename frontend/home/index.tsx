@@ -29,6 +29,20 @@ type RecentOccurrence = {
   tipo_vitima: { nome: string | null } | null;
 };
 
+function formatReverseAddress(address?: Location.LocationGeocodedAddress | null) {
+  if (!address) return null;
+  const parts = [
+    address.street,
+    address.streetNumber,
+    address.district,
+    address.city,
+    address.region,
+  ]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean);
+
+  return parts.length ? parts.join(', ') : null;
+}
 function statusToLabel(status: string | null | undefined) {
   switch ((status || '').toLowerCase()) {
     case 'registrada': return 'Registrada';

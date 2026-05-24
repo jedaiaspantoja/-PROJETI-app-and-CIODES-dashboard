@@ -16,6 +16,23 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { colors } from '../shared/theme';
 
+function calculateAgeFromBirthDate(value?: string | null) {
+  if (!value) return '';
+  const birth = new Date(value);
+  if (Number.isNaN(birth.getTime())) return '';
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age -= 1;
+  }
+  return age >= 0 ? String(age) : '';
+}
+
+function resolveVictimAge(ocorrencia: any) {
+  return calculateAgeFromBirthDate(ocorrencia?.vitima_data_nascimento)
+    || (ocorrencia?.vitima_idade_anos != null ? String(ocorrencia.vitima_idade_anos) : '');
+}
 // Sistema de Cores Manchester
 const manchesterColors = {
   red: '#dc2626',      // Emergência
@@ -79,8 +96,8 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
   
   const [formData, setFormData] = useState<RelatorioData>({
     triagem: '',
-    nomeVitima: ocorrencia?.tipo_vitima?.nome || '',
-    idadeVitima: '',
+    nomeVitima: ocorrencia?.vitima_nome || ocorrencia?.tipo_vitima?.nome || '',
+    idadeVitima: resolveVictimAge(ocorrencia),
     contatoEmergencia: ocorrencia?.solicitante?.telefone || '',
     pa: '',
     fc: '',
@@ -150,44 +167,74 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
           <meta charset="UTF-8" />
           <title>Relatório APH - ${ocorrencia?.protocolo}</title>
           <style>
+            @page { size: A4; margin: 8mm; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
               font-family: 'Arial', sans-serif;
               color: #000;
               background: #fff;
-              line-height: 1.4;
+              line-height: 1.28;
+              min-height: 281mm;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              color-adjust: exact;
             }
             .container {
-              width: 210mm;
-              height: 297mm;
+              width: 100%;
+              min-height: auto;
               margin: 0 auto;
               padding: 0;
               background: white;
               position: relative;
+              min-height: 281mm;
+              display: flex;
+              flex-direction: column;
+              page-break-after: avoid;
             }
             
             /* FAIXA DE GRAVIDADE NO TOPO */
             .severity-bar {
               width: 100%;
-              background-color: ${triageInfo.cor};
-              color: white;
-              padding: 12px 20px;
-              font-size: 18px;
+              background: ${triageInfo.cor} !important;
+              background-color: ${triageInfo.cor} !important;
+              background-image: linear-gradient(${triageInfo.cor}, ${triageInfo.cor}) !important;
+              box-shadow: inset 0 0 0 1000px ${triageInfo.cor};
+              border: 1px solid ${triageInfo.cor};
+              border-top: 8px solid ${triageInfo.cor};
+              color: #FFFFFF !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              color-adjust: exact;
+              border-collapse: collapse;
+              font-size: 17px;
               font-weight: bold;
               text-align: center;
               letter-spacing: 1px;
             }
             
+            .severity-cell {
+              background: ${triageInfo.cor} !important;
+              background-color: ${triageInfo.cor} !important;
+              background-image: linear-gradient(${triageInfo.cor}, ${triageInfo.cor}) !important;
+              box-shadow: inset 0 0 0 1000px ${triageInfo.cor};
+              color: #FFFFFF !important;
+              padding: 9px 16px;
+              text-align: center;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              color-adjust: exact;
+            }
             .severity-time {
-              font-size: 14px;
-              margin-top: 4px;
+              color: #FFFFFF !important;
+              font-size: 12px;
+              margin-top: 2px;
               font-weight: normal;
               letter-spacing: 0.5px;
             }
             
             /* CABEÇALHO */
             .header {
-              padding: 20px;
+              padding: 12px 16px;
               border-bottom: 3px solid #000;
               display: flex;
               justify-content: space-between;
@@ -243,7 +290,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
             
             /* SEÇÕES */
             .section {
-              padding: 15px 20px;
+              padding: 9px 16px;
               border-bottom: 1px solid #ccc;
             }
             
@@ -251,8 +298,8 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
               font-size: 11px;
               font-weight: bold;
               text-transform: uppercase;
-              margin-bottom: 8px;
-              padding-bottom: 4px;
+              margin-bottom: 6px;
+              padding-bottom: 3px;
               border-bottom: 2px solid #000;
               letter-spacing: 0.5px;
             }
@@ -277,7 +324,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
             
             .vitals-table td {
               border: 1px solid #000;
-              padding: 6px 8px;
+              padding: 4px 6px;
               text-align: left;
             }
             
@@ -304,7 +351,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
               margin-top: 6px;
               padding: 8px;
               border: 1px solid #000;
-              min-height: 40px;
+              min-height: 28px;
               line-height: 1.5;
             }
             
@@ -314,7 +361,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
               margin-top: 6px;
               padding: 8px;
               border: 1px solid #000;
-              min-height: 60px;
+              min-height: 42px;
               line-height: 1.5;
               white-space: pre-wrap;
               word-wrap: break-word;
@@ -322,27 +369,30 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
             
             /* RODAPÉ */
             .footer {
-              position: absolute;
-              bottom: 0;
               width: 100%;
-              padding: 15px 20px;
+              margin-top: auto;
+              padding: 7px 16px 0;
               font-size: 8px;
-              border-top: 1px solid #ccc;
+              border-top: 1px solid #999;
               display: flex;
               justify-content: space-between;
               align-items: center;
+              background: #FFFFFF;
+              page-break-inside: avoid;
+              page-break-before: avoid;
             }
             
             .signature-area {
               display: flex;
-              gap: 40px;
-              margin-top: 30px;
+              justify-content: center;
+              gap: 32px;
+              margin-top: 14px;
               font-size: 9px;
             }
             
             .signature-line {
               border-top: 1px solid #000;
-              width: 120px;
+              width: 150px;
               text-align: center;
               padding-top: 4px;
               line-height: 1.3;
@@ -352,10 +402,14 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
         <body>
           <div class="container">
             <!-- FAIXA DE GRAVIDADE -->
-            <div class="severity-bar">
-              ${triageInfo.label}
-              <div class="severity-time">${triageInfo.tempo}</div>
-            </div>
+            <table class="severity-bar" bgcolor="${triageInfo.cor}" cellpadding="0" cellspacing="0" style="background:${triageInfo.cor} !important; background-color:${triageInfo.cor} !important; background-image:linear-gradient(${triageInfo.cor}, ${triageInfo.cor}) !important; box-shadow:inset 0 0 0 1000px ${triageInfo.cor}; border-color:${triageInfo.cor}; color:#FFFFFF !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact;">
+              <tr>
+                <td class="severity-cell" bgcolor="${triageInfo.cor}" style="background:${triageInfo.cor} !important; background-color:${triageInfo.cor} !important; color:#FFFFFF !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact;">
+                  ${triageInfo.label}
+                  <div class="severity-time">${triageInfo.tempo}</div>
+                </td>
+              </tr>
+            </table>
             
             <!-- CABEÇALHO -->
             <div class="header">
@@ -445,7 +499,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
             </div>
             
             <!-- ASSINATURA -->
-            <div style="padding: 20px; margin-bottom: 80px;">
+            <div style="padding: 10px 20px 12px; text-align: center; page-break-inside: avoid;">
               <div class="signature-area">
                 <div class="signature-line">
                   <strong>${socorrista?.email || 'Profissional'}</strong><br>
@@ -722,9 +776,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
           <View style={[
             styles.previewSeverityBar,
             {
-              backgroundColor: triageInfo.cor === '#dc2626' ? '#dc2626' :
-                              triageInfo.cor === '#EA580C' ? '#EA580C' :
-                              triageInfo.cor === '#d97706' ? '#d97706' : '#22c55e'
+              backgroundColor: triageInfo.cor
             }
           ]}>
             <Text style={styles.previewSeverityText}>{triageInfo.label}</Text>

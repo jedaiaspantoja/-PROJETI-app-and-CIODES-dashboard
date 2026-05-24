@@ -43,6 +43,7 @@ RETURNS TABLE (
   email TEXT,
   cpf_matricula TEXT,
   telefone TEXT,
+  data_nascimento DATE,
   papel TEXT,
   ativo BOOLEAN
 )
@@ -57,6 +58,7 @@ AS $$
     u.email,
     u.cpf_matricula,
     u.telefone,
+    u.data_nascimento,
     u.papel,
     u.ativo
   FROM public.usuarios u

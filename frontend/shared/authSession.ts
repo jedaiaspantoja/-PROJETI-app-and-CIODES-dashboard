@@ -6,6 +6,7 @@ export type SessionUser = {
   email: string | null;
   cpf_matricula?: string | null;
   telefone?: string | null;
+  data_nascimento?: string | null;
   papel: 'solicitante' | 'socorrista' | 'ciodes' | 'admin';
   ativo?: boolean;
 };

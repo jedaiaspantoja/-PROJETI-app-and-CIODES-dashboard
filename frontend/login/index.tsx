@@ -27,6 +27,7 @@ type UsuarioLogin = {
   email: string | null;
   cpf_matricula: string | null;
   telefone: string | null;
+  data_nascimento: string | null;
   papel: string;
   ativo: boolean;
 };

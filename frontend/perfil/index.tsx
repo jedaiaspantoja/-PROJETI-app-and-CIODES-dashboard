@@ -22,10 +22,49 @@ type ProfileUser = {
   email: string | null;
   cpf_matricula?: string | null;
   telefone?: string | null;
+  data_nascimento?: string | null;
   papel: 'solicitante' | 'socorrista' | 'ciodes' | 'admin';
   ativo?: boolean;
 };
 
+
+function formatBirthDateInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function formatBirthDateFromISO(value?: string | null) {
+  if (!value) return '';
+  const [year, month, day] = value.split('-');
+  if (!year || !month || !day) return '';
+  return `${day.slice(0, 2)}/${month}/${year}`;
+}
+
+function parseBirthDateBR(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.length !== 8) return undefined;
+
+  const day = Number(digits.slice(0, 2));
+  const month = Number(digits.slice(2, 4));
+  const year = Number(digits.slice(4, 8));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const currentYear = new Date().getFullYear();
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    year < 1900 ||
+    year > currentYear
+  ) {
+    return undefined;
+  }
+
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
 function formatRole(role?: string | null) {
   switch (role) {
     case 'solicitante': return 'Solicitante';
@@ -49,6 +88,7 @@ export default function Perfil({ navigation }: any) {
   const [user, setUser] = useState<ProfileUser | null>(() => getCurrentUser() as ProfileUser | null);
   const [nome, setNome] = useState(user?.nome || '');
   const [telefone, setTelefone] = useState(user?.telefone || '');
+  const [dataNascimento, setDataNascimento] = useState(formatBirthDateFromISO(user?.data_nascimento));
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -65,7 +105,7 @@ export default function Perfil({ navigation }: any) {
       setLoading(true);
       const { data, error } = await supabase
         .from('usuarios')
-        .select('id, nome, email, cpf_matricula, telefone, papel, ativo')
+        .select('id, nome, email, cpf_matricula, telefone, data_nascimento, papel, ativo')
         .eq('id', current.id)
         .maybeSingle();
 
@@ -78,6 +118,7 @@ export default function Perfil({ navigation }: any) {
         setCurrentUser(loaded);
         setNome(loaded.nome || '');
         setTelefone(loaded.telefone || '');
+        setDataNascimento(formatBirthDateFromISO(loaded.data_nascimento));
       }
       setLoading(false);
     }
@@ -89,6 +130,12 @@ export default function Perfil({ navigation }: any) {
     if (!user) return;
     const nomeLimpo = nome.trim();
     const telefoneLimpo = telefone.trim();
+    const dataNascimentoISO = parseBirthDateBR(dataNascimento);
+
+    if (dataNascimentoISO === undefined) {
+      Alert.alert('Data inválida', 'Informe a data de nascimento no formato DD/MM/AAAA.');
+      return;
+    }
 
     if (!nomeLimpo) {
       Alert.alert('Nome obrigatório', 'Informe seu nome completo.');
@@ -101,10 +148,11 @@ export default function Perfil({ navigation }: any) {
       .update({
         nome: nomeLimpo,
         telefone: telefoneLimpo || null,
+        data_nascimento: dataNascimentoISO,
         atualizado_em: new Date().toISOString(),
       })
       .eq('id', user.id)
-      .select('id, nome, email, cpf_matricula, telefone, papel, ativo')
+      .select('id, nome, email, cpf_matricula, telefone, data_nascimento, papel, ativo')
       .single();
 
     setSaving(false);

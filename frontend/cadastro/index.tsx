@@ -44,6 +44,37 @@ const formatCpf = (value: string) => {
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
 };
 
+
+function formatBirthDateInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function parseBirthDateBR(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.length !== 8) return undefined;
+
+  const day = Number(digits.slice(0, 2));
+  const month = Number(digits.slice(2, 4));
+  const year = Number(digits.slice(4, 8));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const currentYear = new Date().getFullYear();
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    year < 1900 ||
+    year > currentYear
+  ) {
+    return undefined;
+  }
+
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
 function guarnicaoLabel(guarnicao: Guarnicao) {
   return `${guarnicao.tipo_viatura || ''} ${guarnicao.prefixo || guarnicao.nome || ''}`.trim() || guarnicao.nome || 'Guarnicao';
 }
@@ -77,6 +108,7 @@ export default function Cadastro({ navigation, route }: CadastroProps) {
   const [fullName, setFullName] = useState('');
   const [documento, setDocumento] = useState('');
   const [telefone, setTelefone] = useState('');
+  const [dataNascimento, setDataNascimento] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [guarnicoes, setGuarnicoes] = useState<Guarnicao[]>([]);
@@ -111,6 +143,12 @@ export default function Cadastro({ navigation, route }: CadastroProps) {
   const handleRegister = async () => {
     if (!fullName.trim() || !documento.trim() || !email.trim() || !password.trim()) {
       Alert.alert('Erro', `Preencha nome, ${isSocorrista ? 'matricula' : 'CPF'}, email e senha.`);
+      return;
+    }
+
+    const dataNascimentoISO = parseBirthDateBR(dataNascimento);
+    if (dataNascimentoISO === undefined) {
+      Alert.alert('Data inválida', 'Informe a data de nascimento no formato DD/MM/AAAA.');
       return;
     }
 
@@ -179,6 +217,7 @@ export default function Cadastro({ navigation, route }: CadastroProps) {
         email: email.trim().toLowerCase(),
         cpf_matricula: documentoLimpo,
         telefone: telefone.trim() || null,
+        data_nascimento: dataNascimentoISO,
       };
 
       const profileRequest = existingUsuario
@@ -327,6 +366,19 @@ export default function Cadastro({ navigation, route }: CadastroProps) {
             </View>
           )}
 
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Data de nascimento (opcional)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="DD/MM/AAAA"
+              placeholderTextColor={colors.placeholder}
+              keyboardType="numeric"
+              value={dataNascimento}
+              onChangeText={(value) => setDataNascimento(formatBirthDateInput(value))}
+              maxLength={10}
+            />
+          </View>
           <View style={styles.formGroup}>
             <Text style={styles.label}>Telefone (opcional)</Text>
             <TextInput
