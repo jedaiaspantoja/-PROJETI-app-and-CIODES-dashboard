@@ -320,7 +320,7 @@ python -m http.server 8000
 Abra no navegador:
 
 ```text
-http://localhost:8000/dashboard/?v=20260506-1
+ 
 ```
 
 Se o navegador mostrar versao antiga, use:

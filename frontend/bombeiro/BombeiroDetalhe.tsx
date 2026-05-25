@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Linking,
@@ -21,7 +21,9 @@ import LoadingState from '../shared/LoadingState';
 
 const STATUS_FLOW = ['guarnicao_empenhada', 'em_deslocamento', 'em_atendimento', 'finalizada'];
 
-// Nova funcao para cores e icones dinamicos
+const COLETOR_OTG_URL = 'http://127.0.0.1:8080/leitura';
+const INTERVALO_LEITURA_OTG = 3000;
+
 function getStatusStyle(statusRaw: string | null | undefined) {
   const s = (statusRaw || '').toLowerCase();
   switch (s) {
@@ -82,7 +84,56 @@ export default function BombeiroDetalhe() {
   const [novoRelato, setNovoRelato] = useState('');
   const [savingRelato, setSavingRelato] = useState(false);
   const [showRelatorioPDF, setShowRelatorioPDF] = useState(false);
+  const [coletorAtivo, setColetorAtivo] = useState(false);
+  const [statusColetor, setStatusColetor] = useState('Aguardando Coletor OTG Backend');
+
+  const ultimaLeituraOtgRef = useRef('');
   const user = getCurrentUser();
+
+  const buscarLeituraOtg = useCallback(async () => {
+    try {
+      const resposta = await fetch(COLETOR_OTG_URL);
+
+      if (!resposta.ok) {
+        setColetorAtivo(false);
+        setStatusColetor('Coletor OTG não respondeu corretamente.');
+        return;
+      }
+
+      const dados = await resposta.json();
+
+      const leituraAtualJson = JSON.stringify({
+        frequencia_cardiaca_bpm: dados.frequencia_cardiaca_bpm,
+        saturacao_spo2: dados.saturacao_spo2,
+        temperatura_c: dados.temperatura_c,
+        coletado_em: dados.coletado_em,
+        status: dados.status,
+      });
+
+      if (leituraAtualJson === ultimaLeituraOtgRef.current) {
+        setColetorAtivo(true);
+        setStatusColetor('Coletor OTG conectado. Aguardando nova leitura.');
+        return;
+      }
+
+      ultimaLeituraOtgRef.current = leituraAtualJson;
+      setColetorAtivo(true);
+      setStatusColetor(dados.status ? `Coletor OTG: ${dados.status}` : 'Leitura recebida do Coletor OTG.');
+
+      setUltimaLeitura({
+        id: 'otg-local',
+        frequencia_cardiaca_bpm: dados.frequencia_cardiaca_bpm,
+        saturacao_spo2: dados.saturacao_spo2,
+        temperatura_c: dados.temperatura_c,
+        coletado_em: dados.coletado_em ?? new Date().toISOString(),
+        origem: 'coletor_otg',
+        status: dados.status,
+      });
+    } catch (error) {
+      setColetorAtivo(false);
+      setStatusColetor('Abra o Coletor OTG Backend e inicie o backend local.');
+    }
+  }, []);
 
   const loadRelatos = useCallback(async () => {
     if (!ocorrenciaId) return;
@@ -116,7 +167,7 @@ export default function BombeiroDetalhe() {
     if (leituraError) {
       console.error('[SocorristaDetalhe] Erro ao carregar sinais vitais:', leituraError);
       setUltimaLeitura(null);
-    } else {
+    } else if (leitura) {
       setUltimaLeitura(leitura);
     }
 
@@ -184,11 +235,22 @@ export default function BombeiroDetalhe() {
     void loadDetalhe();
   }, [loadDetalhe]);
 
+  useEffect(() => {
+    void buscarLeituraOtg();
+
+    const intervalo = setInterval(() => {
+      void buscarLeituraOtg();
+    }, INTERVALO_LEITURA_OTG);
+
+    return () => clearInterval(intervalo);
+  }, [buscarLeituraOtg]);
+
   useFocusEffect(
     useCallback(() => {
       void loadSinaisVitais();
       void loadRelatos();
-    }, [loadRelatos, loadSinaisVitais])
+      void buscarLeituraOtg();
+    }, [loadRelatos, loadSinaisVitais, buscarLeituraOtg])
   );
 
   async function handleOpenMaps() {
@@ -282,7 +344,6 @@ export default function BombeiroDetalhe() {
   function handleDownloadPDF() {
     setShowRelatorioPDF(true);
   }
-
 
   if (loading) {
     return (
@@ -391,7 +452,7 @@ export default function BombeiroDetalhe() {
               <MaterialCommunityIcons name="heart-pulse" size={22} color={colors.danger} />
               <Text style={styles.cardTitle}>Sensores Vitais</Text>
             </View>
-            <TouchableOpacity onPress={() => void loadSinaisVitais()} style={{ padding: 4 }}>
+            <TouchableOpacity onPress={() => void buscarLeituraOtg()} style={{ padding: 4 }}>
               <MaterialCommunityIcons name="refresh" size={20} color={colors.primary} />
             </TouchableOpacity>
           </View>
@@ -404,37 +465,30 @@ export default function BombeiroDetalhe() {
                 <VitalBox label="Temp." value={formatNumber(ultimaLeitura.temperatura_c, ' °C')} icon="thermometer" color={colors.warning} />
               </View>
               <Text style={styles.cardLabel}>Última leitura: {formatDateTime(ultimaLeitura.coletado_em)}</Text>
+              {ultimaLeitura.origem === 'coletor_otg' ? (
+                <Text style={styles.cardLabel}>Origem: Coletor OTG Backend</Text>
+              ) : null}
             </>
           ) : (
             <View style={styles.emptySensorsBox}>
-              <MaterialCommunityIcons name="wifi-off" size={24} color={colors.placeholder} style={{ marginBottom: 8 }} />
-              <Text style={[styles.cardText, { textAlign: 'center' }]}>Nenhum dado recebido. Conecte o dispositivo.</Text>
+              <MaterialCommunityIcons name="usb-port" size={24} color={colors.placeholder} style={{ marginBottom: 8 }} />
+              <Text style={[styles.cardText, { textAlign: 'center' }]}>Nenhum dado recebido. Abra o Coletor OTG Backend.</Text>
             </View>
           )}
 
-          {/* ESQUELETO PARA EQUIPE DE HARDWARE */}
           <TouchableOpacity
             style={styles.simulateButton}
-            onPress={() => {
-              Alert.alert(
-                "Integração do Arduino",
-                "Equipe de Hardware: Insira aqui a lógica Bluetooth.\n\nSimulando dados...",
-                [{
-                  text: "Simular Leitura", onPress: () => {
-                    setUltimaLeitura({
-                      frequencia_cardiaca_bpm: Math.floor(Math.random() * (120 - 70) + 70),
-                      saturacao_spo2: Math.floor(Math.random() * (100 - 90) + 90),
-                      temperatura_c: (Math.random() * (39 - 36) + 36).toFixed(1),
-                      coletado_em: new Date().toISOString()
-                    });
-                  }
-                }]
-              );
-            }}
+            onPress={() => void buscarLeituraOtg()}
           >
-            <MaterialCommunityIcons name="bluetooth-connect" size={16} color="#FFF" style={{ marginRight: 6 }} />
-            <Text style={styles.buttonSecondaryText}>Conectar Sensores (Simulação)</Text>
+            <MaterialCommunityIcons name="usb-port" size={16} color="#FFF" style={{ marginRight: 6 }} />
+            <Text style={styles.buttonSecondaryText}>
+              {coletorAtivo ? 'Atualizar Sensores OTG' : 'Conectar Coletor OTG'}
+            </Text>
           </TouchableOpacity>
+
+          <Text style={styles.cardLabel}>
+            {statusColetor}
+          </Text>
 
           {alertas.length > 0 && (
             <View style={{ marginTop: 16 }}>
@@ -816,5 +870,3 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 });
-
-
