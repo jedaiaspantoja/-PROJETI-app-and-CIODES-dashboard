@@ -207,7 +207,10 @@ export default function BombeiroDetalhe() {
           longitude,
           solicitante:solicitante_id (nome, telefone),
           tipo_ocorrencia:tipo_ocorrencia_id (nome),
-          tipo_vitima:tipo_vitima_id (nome)
+          tipo_vitima:tipo_vitima_id (nome),
+          empenhos:ocorrencia_empenhos (
+            guarnicao:guarnicao_id (nome, tipo_viatura, prefixo)
+          )
         `
         )
         .eq('id', ocorrenciaId)
@@ -580,6 +583,8 @@ export default function BombeiroDetalhe() {
         onClose={() => setShowRelatorioPDF(false)}
         ocorrencia={detalhe}
         socorrista={user}
+        ultimaLeitura={ultimaLeitura}
+        alertas={alertas}
       />
     </View>
   );

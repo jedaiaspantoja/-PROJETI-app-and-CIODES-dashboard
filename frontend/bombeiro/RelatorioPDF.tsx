@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -14,6 +14,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { supabase } from '../../backend/connectors/postgre';
 import { colors } from '../shared/theme';
 
 function calculateAgeFromBirthDate(value?: string | null) {
@@ -33,6 +34,57 @@ function resolveVictimAge(ocorrencia: any) {
   return calculateAgeFromBirthDate(ocorrencia?.vitima_data_nascimento)
     || (ocorrencia?.vitima_idade_anos != null ? String(ocorrencia.vitima_idade_anos) : '');
 }
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function formatVitalValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return '';
+  return String(value);
+}
+
+function fieldValue(value: unknown, suffix = '') {
+  if (value === null || value === undefined || value === '') return '';
+  const text = String(value);
+  return text ? `${text}${suffix}` : '';
+}
+
+function getGuarnicaoLabel(ocorrencia: any) {
+  const guarnicao = ocorrencia?.empenhos?.[0]?.guarnicao;
+  if (!guarnicao) return 'Nao informada';
+  return `${guarnicao.tipo_viatura || ''} ${guarnicao.prefixo || guarnicao.nome || ''}`.trim() || guarnicao.nome || 'Nao informada';
+}
+
+function buildInitialFormData(ocorrencia: any, ultimaLeitura?: any | null, alertas?: any[], draft?: Partial<RelatorioData>): RelatorioData {
+  const alertaMaisRecente = alertas?.[0];
+  return {
+    triagem: '',
+    nomeVitima: ocorrencia?.vitima_nome || '',
+    tipoVitima: ocorrencia?.tipo_vitima?.nome || '',
+    idadeVitima: resolveVictimAge(ocorrencia),
+    contatoEmergencia: ocorrencia?.solicitante?.telefone || '',
+    pa: '',
+    fc: formatVitalValue(ultimaLeitura?.frequencia_cardiaca_bpm),
+    spo2: formatVitalValue(ultimaLeitura?.saturacao_spo2),
+    temperatura: formatVitalValue(ultimaLeitura?.temperatura_c),
+    horarioLeitura: formatDateTime(ultimaLeitura?.coletado_em),
+    alertaClinico: alertaMaisRecente
+      ? `${String(alertaMaisRecente.nivel || '').toUpperCase()} - ${alertaMaisRecente.mensagem || alertaMaisRecente.tipo || 'Alerta clinico'}`
+      : '',
+    sintomas: [],
+    observacoesCena: '',
+    conduta: '',
+    unidadeDestino: '',
+    recebedorHospital: '',
+    horarioEntrega: '',
+    ...draft,
+  };
+}
+
 // Sistema de Cores Manchester
 const manchesterColors = {
   red: '#dc2626',      // Emergência
@@ -68,6 +120,7 @@ export type RelatorioData = {
   
   // Dados da Vítima
   nomeVitima: string;
+  tipoVitima: string;
   idadeVitima: string;
   contatoEmergencia: string;
   
@@ -76,12 +129,18 @@ export type RelatorioData = {
   fc: string;
   spo2: string;
   temperatura: string;
+  horarioLeitura: string;
+  alertaClinico: string;
   
   // Sintomas
   sintomas: string[];
   
   // Conduta
+  observacoesCena: string;
   conduta: string;
+  unidadeDestino: string;
+  recebedorHospital: string;
+  horarioEntrega: string;
 };
 
 interface RelatorioPDFProps {
@@ -89,23 +148,15 @@ interface RelatorioPDFProps {
   onClose: () => void;
   ocorrencia: any;
   socorrista: any;
+  ultimaLeitura?: any | null;
+  alertas?: any[];
 }
 
-export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista }: RelatorioPDFProps) {
+export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista, ultimaLeitura, alertas = [] }: RelatorioPDFProps) {
   const [section, setSection] = useState<'triagem' | 'vitima' | 'vitais' | 'sintomas' | 'conduta' | 'preview'>('triagem');
+  const [savingDraft, setSavingDraft] = useState(false);
   
-  const [formData, setFormData] = useState<RelatorioData>({
-    triagem: '',
-    nomeVitima: ocorrencia?.vitima_nome || ocorrencia?.tipo_vitima?.nome || '',
-    idadeVitima: resolveVictimAge(ocorrencia),
-    contatoEmergencia: ocorrencia?.solicitante?.telefone || '',
-    pa: '',
-    fc: '',
-    spo2: '',
-    temperatura: '',
-    sintomas: [],
-    conduta: '',
-  });
+  const [formData, setFormData] = useState<RelatorioData>(() => buildInitialFormData(ocorrencia, ultimaLeitura, alertas));
 
   const [expandedSections, setExpandedSections] = useState({
     vitima: false,
@@ -113,6 +164,72 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
     sintomas: false,
     conduta: false,
   });
+
+  useEffect(() => {
+    if (!visible || !ocorrencia?.id) return;
+
+    let isActive = true;
+
+    async function loadDraft() {
+      const baseData = buildInitialFormData(ocorrencia, ultimaLeitura, alertas);
+      const { data, error } = await supabase
+        .from('formularios_ocorrencia')
+        .select('dados_json')
+        .eq('ocorrencia_id', ocorrencia.id)
+        .maybeSingle();
+
+      if (!isActive) return;
+
+      if (error) {
+        console.error('[RelatorioPDF] erro ao carregar rascunho:', error);
+        setFormData(baseData);
+        setSection('triagem');
+        return;
+      }
+
+      const draft = (data?.dados_json || null) as Partial<RelatorioData> | null;
+      setFormData(buildInitialFormData(ocorrencia, ultimaLeitura, alertas, draft || undefined));
+      setSection(draft ? 'preview' : 'triagem');
+    }
+
+    void loadDraft();
+
+    return () => {
+      isActive = false;
+    };
+  }, [visible, ocorrencia?.id, ultimaLeitura?.id, alertas.length]);
+
+  async function saveDraft(options?: { silent?: boolean; status?: 'rascunho' | 'gerado' }) {
+    if (!ocorrencia?.id) {
+      if (!options?.silent) Alert.alert('Rascunho indisponivel', 'Ocorrencia sem identificador para salvar o relatorio.');
+      return false;
+    }
+
+    setSavingDraft(true);
+    try {
+      const { error } = await supabase.from('formularios_ocorrencia').upsert(
+        {
+          ocorrencia_id: ocorrencia.id,
+          status: options?.status || 'rascunho',
+          dados_json: formData,
+          gerado_por: socorrista?.id || null,
+          atualizado_em: new Date().toISOString(),
+        },
+        { onConflict: 'ocorrencia_id' }
+      );
+
+      if (error) {
+        console.error('[RelatorioPDF] erro ao salvar rascunho:', error);
+        if (!options?.silent) Alert.alert('Erro', 'Nao foi possivel salvar o rascunho do relatorio.');
+        return false;
+      }
+
+      if (!options?.silent) Alert.alert('Rascunho salvo', 'O preenchimento do relatorio foi salvo.');
+      return true;
+    } finally {
+      setSavingDraft(false);
+    }
+  }
 
   const toggleSection = (sec: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({ ...prev, [sec]: !prev[sec] }));
@@ -155,6 +272,12 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
 
   const generatePDF = async () => {
     try {
+      const draftSaved = await saveDraft({ silent: true, status: 'rascunho' });
+      if (!draftSaved) {
+        Alert.alert('Erro', 'Nao foi possivel salvar o rascunho antes de gerar o PDF.');
+        return;
+      }
+
       const now = new Date();
       const dateStr = now.toLocaleDateString('pt-BR');
       const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -304,16 +427,6 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
               letter-spacing: 0.5px;
             }
             
-            /* DUAS COLUNAS */
-            .two-columns {
-              display: flex;
-              gap: 20px;
-            }
-            
-            .column {
-              flex: 1;
-            }
-            
             /* TABELA DE SINAIS VITAIS */
             .vitals-table {
               width: 100%;
@@ -330,19 +443,11 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
             
             .vitals-label {
               font-weight: bold;
-              width: 45%;
               background-color: #f0f0f0;
             }
             
             .vitals-value {
-              font-weight: bold;
-              width: 55%;
-            }
-            
-            /* DADOS DA VÍTIMA */
-            .victim-data {
-              font-size: 10px;
-              margin-top: 6px;
+              width: 35%;
             }
             
             /* SINTOMAS */
@@ -367,16 +472,10 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
               word-wrap: break-word;
             }
             
-            /* RODAPÉ */
-            .footer {
+            /* ASSINATURA E RODAPÉ */
+            .document-footer {
               width: 100%;
               margin-top: auto;
-              padding: 7px 16px 0;
-              font-size: 8px;
-              border-top: 1px solid #999;
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
               background: #FFFFFF;
               page-break-inside: avoid;
               page-break-before: avoid;
@@ -386,7 +485,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
               display: flex;
               justify-content: center;
               gap: 32px;
-              margin-top: 14px;
+              padding: 18px 20px 12px;
               font-size: 9px;
             }
             
@@ -396,6 +495,15 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
               text-align: center;
               padding-top: 4px;
               line-height: 1.3;
+            }
+
+            .footer {
+              padding: 7px 16px 0;
+              font-size: 8px;
+              border-top: 1px solid #999;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
             }
           </style>
         </head>
@@ -414,71 +522,80 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
             <!-- CABEÇALHO -->
             <div class="header">
               <div class="header-left">
-                <div class="institution-name">PROJETI - SISTEMA DE APH</div>
+                <div class="institution-name">PROJETI APH</div>
                 <div class="document-title">Relatório de Atendimento Pré-Hospitalar</div>
               </div>
               <div class="header-right">
-                <div><strong>Data:</strong> ${dateStr}</div>
-                <div><strong>Hora:</strong> ${timeStr}</div>
-                <div class="protocol-number">Protocolo: #${ocorrencia?.protocolo || 'N/A'}</div>
+                <div>Protocolo: ${ocorrencia?.protocolo ? `#${ocorrencia.protocolo}` : ''}</div>
+                <div>Viatura: ${getGuarnicaoLabel(ocorrencia) === 'Nao informada' ? '' : getGuarnicaoLabel(ocorrencia)}</div>
+                <div>Socorrista: ${socorrista?.nome || socorrista?.email || ''}</div>
               </div>
             </div>
             
-            <!-- DADOS DA OCORRÊNCIA E PROFISSIONAL -->
             <div class="section">
               <div class="section-title">Identificação</div>
               <div class="info-line">
-                <div class="info-label">Profissional:</div>
-                <div class="info-value">${socorrista?.email || 'Não identificado'}</div>
-              </div>
-              <div class="info-line">
                 <div class="info-label">Local:</div>
-                <div class="info-value">${ocorrencia?.endereco_texto || 'Não informado'}</div>
+                <div class="info-value">${fieldValue(ocorrencia?.endereco_texto)}</div>
               </div>
               <div class="info-line">
-                <div class="info-label">Localização GPS:</div>
-                <div class="info-value">${ocorrencia?.latitude && ocorrencia?.longitude ? `${ocorrencia.latitude}, ${ocorrencia.longitude}` : 'Não registrado'}</div>
+                <div class="info-label">GPS:</div>
+                <div class="info-value">${ocorrencia?.latitude && ocorrencia?.longitude ? `${ocorrencia.latitude}, ${ocorrencia.longitude}` : ''}</div>
               </div>
               <div class="info-line">
-                <div class="info-label">Tipo de Ocorrência:</div>
-                <div class="info-value">${ocorrencia?.tipo_ocorrencia?.nome || 'Não especificado'}</div>
+                <div class="info-label">Ocorrência:</div>
+                <div class="info-value">${fieldValue(ocorrencia?.tipo_ocorrencia?.nome)}</div>
+              </div>
+              <div class="info-line">
+                <div class="info-label">Status:</div>
+                <div class="info-value">${fieldValue(ocorrencia?.status)}</div>
               </div>
             </div>
             
-            <!-- DADOS DA VÍTIMA E SINAIS VITAIS -->
             <div class="section">
-              <div class="section-title">Dados Clínicos</div>
-              <div class="two-columns">
-                <div class="column">
-                  <strong style="font-size: 10px;">DADOS DA VÍTIMA</strong>
-                  <div class="victim-data">
-                    <div><strong>Nome/Tipo:</strong> ${formData.nomeVitima || 'Não informado'}</div>
-                    <div><strong>Idade:</strong> ${formData.idadeVitima || 'N/A'} anos</div>
-                    <div><strong>Contato Emergência:</strong> ${formData.contatoEmergencia || 'N/A'}</div>
-                  </div>
-                </div>
-                <div class="column">
-                  <strong style="font-size: 10px;">SINAIS VITAIS</strong>
-                  <table class="vitals-table">
-                    <tr>
-                      <td class="vitals-label">Pressão Arterial (PA)</td>
-                      <td class="vitals-value">${formData.pa || '-'} mmHg</td>
-                    </tr>
-                    <tr>
-                      <td class="vitals-label">Frequência Cardíaca (FC)</td>
-                      <td class="vitals-value">${formData.fc || '-'} bpm</td>
-                    </tr>
-                    <tr>
-                      <td class="vitals-label">Saturação O₂ (SpO₂)</td>
-                      <td class="vitals-value">${formData.spo2 || '-'} %</td>
-                    </tr>
-                    <tr>
-                      <td class="vitals-label">Temperatura (T)</td>
-                      <td class="vitals-value">${formData.temperatura || '-'} °C</td>
-                    </tr>
-                  </table>
-                </div>
+              <div class="section-title">Vítima</div>
+              <div class="info-line">
+                <div class="info-label">Nome:</div>
+                <div class="info-value">${fieldValue(formData.nomeVitima)}</div>
               </div>
+              <div class="info-line">
+                <div class="info-label">Tipo:</div>
+                <div class="info-value">${fieldValue(formData.tipoVitima)}</div>
+              </div>
+              <div class="info-line">
+                <div class="info-label">Idade:</div>
+                <div class="info-value">${fieldValue(formData.idadeVitima, ' anos')}</div>
+              </div>
+              <div class="info-line">
+                <div class="info-label">Contato:</div>
+                <div class="info-value">${fieldValue(formData.contatoEmergencia)}</div>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Sinais vitais</div>
+              <table class="vitals-table">
+                <tr>
+                  <td class="vitals-label">PA</td>
+                  <td class="vitals-value">${fieldValue(formData.pa, ' mmHg')}</td>
+                  <td class="vitals-label">FC</td>
+                  <td class="vitals-value">${fieldValue(formData.fc, ' bpm')}</td>
+                </tr>
+                <tr>
+                  <td class="vitals-label">SpO₂</td>
+                  <td class="vitals-value">${fieldValue(formData.spo2, ' %')}</td>
+                  <td class="vitals-label">Temp.</td>
+                  <td class="vitals-value">${fieldValue(formData.temperatura, ' °C')}</td>
+                </tr>
+                <tr>
+                  <td class="vitals-label">Leitura</td>
+                  <td colspan="3">${fieldValue(formData.horarioLeitura)}</td>
+                </tr>
+                <tr>
+                  <td class="vitals-label">Alerta</td>
+                  <td colspan="3">${fieldValue(formData.alertaClinico)}</td>
+                </tr>
+              </table>
             </div>
             
             <!-- AVALIAÇÃO CLÍNICA -->
@@ -488,34 +605,48 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
               <div class="symptoms-box">
                 ${formData.sintomas.length > 0 
                   ? formData.sintomas.map((s, i) => `${i > 0 ? ' • ' : ''}${s}`).join('')
-                  : 'Nenhum sintoma específico marcado'}
+                  : ''}
+                ${formData.observacoesCena ? `<br>${formData.observacoesCena}` : ''}
               </div>
             </div>
             
             <!-- CONDUTA ADOTADA -->
             <div class="section">
-              <div class="section-title">Conduta e Evolução</div>
-              <div class="conduct-box">${formData.conduta || '(Nenhuma conduta registrada)'}</div>
+              <div class="section-title">Conduta e destino</div>
+              <div class="conduct-box">${fieldValue(formData.conduta)}</div>
             </div>
-            
-            <!-- ASSINATURA -->
-            <div style="padding: 10px 20px 12px; text-align: center; page-break-inside: avoid;">
-              <div class="signature-area">
-                <div class="signature-line">
-                  <strong>${socorrista?.email || 'Profissional'}</strong><br>
-                  Assinatura do Socorrista
-                </div>
-                <div class="signature-line">
-                  ${dateStr}<br>
-                  Data e Hora
-                </div>
+
+            <div class="section">
+              <div class="section-title">Destino / entrega</div>
+              <div class="info-line">
+                <div class="info-label">Unidade:</div>
+                <div class="info-value">${fieldValue(formData.unidadeDestino)}</div>
+              </div>
+              <div class="info-line">
+                <div class="info-label">Recebedor:</div>
+                <div class="info-value">${fieldValue(formData.recebedorHospital)}</div>
+              </div>
+              <div class="info-line">
+                <div class="info-label">Horário:</div>
+                <div class="info-value">${fieldValue(formData.horarioEntrega)}</div>
               </div>
             </div>
             
-            <!-- RODAPÉ -->
-            <div class="footer">
-              <div>Documento gerado automaticamente pelo sistema PROJETI</div>
-              <div style="text-align: right;">Informação confidencial - Protegida por lei de sigilo médico</div>
+            <!-- ASSINATURA E RODAPÉ -->
+            <div class="document-footer">
+              <div class="signature-area">
+                <div class="signature-line">
+                  <strong>${socorrista?.nome || 'Profissional'}</strong><br>
+                  Assinatura do Socorrista
+                </div>
+                <div class="signature-line">
+                  Médico Responsável<br>
+                </div>
+              </div>
+              <div class="footer">
+                <div>PROJETI - Relatório de APH</div>
+                <div style="text-align: right;">Informação confidencial - sigilo médico</div>
+              </div>
             </div>
           </div>
         </body>
@@ -526,6 +657,8 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
         html: htmlContent,
         base64: false,
       });
+
+      await saveDraft({ silent: true, status: 'gerado' });
 
       Alert.alert('Sucesso', 'Relatório gerado com sucesso!', [
         {
@@ -608,6 +741,15 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
               value={formData.nomeVitima}
               onChangeText={(text) => setFormData(prev => ({ ...prev, nomeVitima: text }))}
             />
+
+            <Text style={styles.inputLabel}>Tipo da Vítima</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Adulto, criança ou recém-nascido"
+              placeholderTextColor={colors.placeholder}
+              value={formData.tipoVitima}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, tipoVitima: text }))}
+            />
             
             <Text style={styles.inputLabel}>Idade (anos)</Text>
             <TextInput
@@ -688,6 +830,26 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
               value={formData.temperatura}
               onChangeText={(text) => setFormData(prev => ({ ...prev, temperatura: text }))}
             />
+
+            <Text style={styles.inputLabel}>Horário da leitura</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Horário da última leitura"
+              placeholderTextColor={colors.placeholder}
+              value={formData.horarioLeitura}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, horarioLeitura: text }))}
+            />
+
+            <Text style={styles.inputLabel}>Alerta clínico associado</Text>
+            <TextInput
+              style={[styles.input, { minHeight: 70 }]}
+              placeholder="Alerta clínico ativo ou observação dos sensores"
+              placeholderTextColor={colors.placeholder}
+              multiline
+              textAlignVertical="top"
+              value={formData.alertaClinico}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, alertaClinico: text }))}
+            />
           </View>
         )}
       </View>
@@ -750,6 +912,17 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
         
         {expandedSections.conduta && (
           <View style={styles.accordionContent}>
+            <Text style={styles.inputLabel}>Observações da cena</Text>
+            <TextInput
+              style={[styles.input, { minHeight: 100 }]}
+              placeholder="Ex: cena segura, familiares presentes, mecanismo do trauma, riscos no local..."
+              placeholderTextColor={colors.placeholder}
+              multiline
+              textAlignVertical="top"
+              value={formData.observacoesCena}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, observacoesCena: text }))}
+            />
+
             <Text style={styles.inputLabel}>Descreva a conduta adotada</Text>
             <TextInput
               style={[styles.input, { minHeight: 150 }]}
@@ -760,6 +933,33 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
               value={formData.conduta}
               onChangeText={(text) => setFormData(prev => ({ ...prev, conduta: text }))}
             />
+
+            <Text style={styles.inputLabel}>Unidade de destino</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ex: Hospital de Emergências de Macapá"
+              placeholderTextColor={colors.placeholder}
+              value={formData.unidadeDestino}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, unidadeDestino: text }))}
+            />
+
+            <Text style={styles.inputLabel}>Recebedor no hospital</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ex: Enf. João Pereira"
+              placeholderTextColor={colors.placeholder}
+              value={formData.recebedorHospital}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, recebedorHospital: text }))}
+            />
+
+            <Text style={styles.inputLabel}>Horário da entrega</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ex: 15:02"
+              placeholderTextColor={colors.placeholder}
+              value={formData.horarioEntrega}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, horarioEntrega: text }))}
+            />
           </View>
         )}
       </View>
@@ -769,104 +969,136 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
   const renderPreviewSection = () => {
     const triageInfo = getTriagemInfo(formData.triagem);
     return (
-      <ScrollView style={styles.sectionContent}>
-        {/* PREVIEW VISUAL */}
-        <View style={[styles.previewCard, { borderTopWidth: 0, borderTopLeftRadius: 0, borderTopRightRadius: 0 }]}>
-          {/* Faixa de Gravidade */}
-          <View style={[
-            styles.previewSeverityBar,
-            {
-              backgroundColor: triageInfo.cor
-            }
-          ]}>
-            <Text style={styles.previewSeverityText}>{triageInfo.label}</Text>
-            <Text style={styles.previewSeverityTime}>{triageInfo.tempo}</Text>
+      <ScrollView style={styles.sectionContent} contentContainerStyle={styles.a4PreviewScroll}>
+        <View style={styles.a4Page}>
+          <View style={[styles.a4Severity, { backgroundColor: triageInfo.cor }]}>
+            <Text style={styles.a4SeverityText}>{triageInfo.label}</Text>
+            <Text style={styles.a4SeverityTime}>{triageInfo.tempo}</Text>
           </View>
 
-          <Text style={styles.previewTitle}>📋 Prévia do Documento</Text>
-          
-          <View style={styles.previewSection}>
-            <Text style={styles.previewSectionTitle}>IDENTIFICAÇÃO</Text>
-            <View style={styles.previewItem}>
-              <Text style={styles.previewLabel}>Protocolo:</Text>
-              <Text style={styles.previewValue}>#{ocorrencia?.protocolo || 'N/A'}</Text>
+          <View style={styles.a4Header}>
+            <View>
+              <Text style={styles.a4Brand}>PROJETI APH</Text>
+              <Text style={styles.a4Subtitle}>Relatório de Atendimento Pré-Hospitalar</Text>
             </View>
-            <View style={styles.previewItem}>
-              <Text style={styles.previewLabel}>Local:</Text>
-              <Text style={styles.previewValue}>{ocorrencia?.endereco_texto || 'Não informado'}</Text>
-            </View>
-            <View style={styles.previewItem}>
-              <Text style={styles.previewLabel}>GPS:</Text>
-              <Text style={styles.previewValue}>
-                {ocorrencia?.latitude && ocorrencia?.longitude 
-                  ? `${ocorrencia.latitude.toFixed(4)}, ${ocorrencia.longitude.toFixed(4)}`
-                  : 'Não registrado'}
-              </Text>
+            <View style={styles.a4HeaderMeta}>
+              <Text style={styles.a4MetaText}>Protocolo: {ocorrencia?.protocolo ? `#${ocorrencia.protocolo}` : ''}</Text>
+              <Text style={styles.a4MetaText}>Viatura: {getGuarnicaoLabel(ocorrencia) === 'Nao informada' ? '' : getGuarnicaoLabel(ocorrencia)}</Text>
+              <Text style={styles.a4MetaText}>Socorrista: {socorrista?.nome || socorrista?.email || ''}</Text>
             </View>
           </View>
 
-          <View style={styles.previewSection}>
-            <Text style={styles.previewSectionTitle}>DADOS CLÍNICOS</Text>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.previewSubtitle}>VÍTIMA</Text>
-                <View style={styles.previewItem}>
-                  <Text style={styles.previewLabel}>Nome:</Text>
-                  <Text style={styles.previewValue}>{formData.nomeVitima || 'N/A'}</Text>
-                </View>
-                <View style={styles.previewItem}>
-                  <Text style={styles.previewLabel}>Idade:</Text>
-                  <Text style={styles.previewValue}>{formData.idadeVitima || 'N/A'} anos</Text>
-                </View>
+          <View style={styles.a4Section}>
+            <Text style={styles.a4SectionTitle}>Identificação</Text>
+            <PreviewLine label="Local" value={fieldValue(ocorrencia?.endereco_texto)} />
+            <PreviewLine
+              label="GPS"
+              value={ocorrencia?.latitude && ocorrencia?.longitude ? `${ocorrencia.latitude.toFixed(4)}, ${ocorrencia.longitude.toFixed(4)}` : ''}
+            />
+            <PreviewLine label="Ocorrência" value={fieldValue(ocorrencia?.tipo_ocorrencia?.nome)} />
+            <PreviewLine label="Status" value={fieldValue(ocorrencia?.status)} />
+          </View>
+
+          <View style={styles.a4Section}>
+            <Text style={styles.a4SectionTitle}>Vítima</Text>
+            <PreviewLine label="Nome" value={fieldValue(formData.nomeVitima)} />
+            <PreviewLine label="Tipo" value={fieldValue(formData.tipoVitima)} />
+            <PreviewLine label="Idade" value={fieldValue(formData.idadeVitima, ' anos')} />
+            <PreviewLine label="Contato" value={fieldValue(formData.contatoEmergencia)} />
+          </View>
+
+          <View style={styles.a4Section}>
+            <Text style={styles.a4SectionTitle}>Sinais vitais</Text>
+            <View style={styles.a4VitalsTable}>
+              <View style={styles.a4VitalsRow}>
+                <Text style={styles.a4VitalsLabel}>PA</Text>
+                <Text style={styles.a4VitalsValue}>{fieldValue(formData.pa, ' mmHg')}</Text>
+                <Text style={styles.a4VitalsLabel}>FC</Text>
+                <Text style={styles.a4VitalsValue}>{fieldValue(formData.fc, ' bpm')}</Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.previewSubtitle}>SINAIS VITAIS</Text>
-                <View style={styles.previewVitalItem}>
-                  <Text style={styles.previewLabel}>PA:</Text>
-                  <Text style={styles.previewValue}>{formData.pa || '-'} mmHg</Text>
-                </View>
-                <View style={styles.previewVitalItem}>
-                  <Text style={styles.previewLabel}>FC:</Text>
-                  <Text style={styles.previewValue}>{formData.fc || '-'} bpm</Text>
-                </View>
-                <View style={styles.previewVitalItem}>
-                  <Text style={styles.previewLabel}>SpO₂:</Text>
-                  <Text style={styles.previewValue}>{formData.spo2 || '-'} %</Text>
-                </View>
-                <View style={styles.previewVitalItem}>
-                  <Text style={styles.previewLabel}>T:</Text>
-                  <Text style={styles.previewValue}>{formData.temperatura || '-'} °C</Text>
-                </View>
+              <View style={styles.a4VitalsRow}>
+                <Text style={styles.a4VitalsLabel}>SpO₂</Text>
+                <Text style={styles.a4VitalsValue}>{fieldValue(formData.spo2, ' %')}</Text>
+                <Text style={styles.a4VitalsLabel}>Temp.</Text>
+                <Text style={styles.a4VitalsValue}>{fieldValue(formData.temperatura, ' °C')}</Text>
+              </View>
+              <View style={styles.a4VitalsRow}>
+                <Text style={styles.a4VitalsLabel}>Leitura</Text>
+                <Text style={styles.a4VitalsWide}>{fieldValue(formData.horarioLeitura)}</Text>
+              </View>
+              <View style={styles.a4VitalsRow}>
+                <Text style={styles.a4VitalsLabel}>Alerta</Text>
+                <Text style={styles.a4VitalsWide}>{fieldValue(formData.alertaClinico)}</Text>
               </View>
             </View>
           </View>
 
-          <View style={styles.previewSection}>
-            <Text style={styles.previewSectionTitle}>AVALIAÇÃO CLÍNICA</Text>
-            <View style={styles.previewItem}>
-              <Text style={styles.previewLabel}>Sintomas:</Text>
-              <Text style={styles.previewValue}>
-                {formData.sintomas.length > 0 ? formData.sintomas.join(' • ') : 'Nenhum'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.previewSection}>
-            <Text style={styles.previewSectionTitle}>CONDUTA E EVOLUÇÃO</Text>
-            <Text style={[styles.previewValue, { marginTop: 8, minHeight: 40 }]}>
-              {formData.conduta || '(Nenhuma conduta registrada)'}
+          <View style={styles.a4Section}>
+            <Text style={styles.a4SectionTitle}>Avaliação clínica</Text>
+            <Text style={styles.a4Box}>
+              {formData.sintomas.length > 0 ? formData.sintomas.join(' • ') : ''}
+              {formData.observacoesCena ? `\n${formData.observacoesCena}` : ''}
             </Text>
           </View>
 
-          <Text style={styles.previewFooter}>
-            ✓ Documento em preto e branco com faixa de gravidade colorida
-          </Text>
+          <View style={styles.a4Section}>
+            <Text style={styles.a4SectionTitle}>Conduta e destino</Text>
+            <Text style={styles.a4Box}>{fieldValue(formData.conduta)}</Text>
+          </View>
+
+          <View style={styles.a4PageNumber}>
+            <Text style={styles.a4PageNumberText}>Página 1 de 2</Text>
+          </View>
         </View>
-        
-        <TouchableOpacity style={styles.generateButton} onPress={generatePDF}>
-          <MaterialCommunityIcons name="file-pdf-box" size={20} color="#FFF" style={{ marginRight: 8 }} />
-          <Text style={styles.generateButtonText}>Gerar e Compartilhar PDF</Text>
-        </TouchableOpacity>
+
+        <View style={styles.a4Page}>
+          <View style={styles.a4Section}>
+            <Text style={styles.a4SectionTitle}>Destino / entrega da vítima</Text>
+            <PreviewLine label="Unidade" value={fieldValue(formData.unidadeDestino)} />
+            <PreviewLine label="Recebedor" value={fieldValue(formData.recebedorHospital)} />
+            <PreviewLine label="Horário" value={fieldValue(formData.horarioEntrega)} />
+          </View>
+
+          <View style={styles.a4Section}>
+            <Text style={styles.a4SectionTitle}>Resumo final do atendimento</Text>
+            <Text style={styles.a4Box}>
+              {ocorrencia?.protocolo || ocorrencia?.tipo_ocorrencia?.nome ? `Protocolo ${ocorrencia?.protocolo ? `#${ocorrencia.protocolo}` : ''} - ${ocorrencia?.tipo_ocorrencia?.nome || ''}.` : ''}
+              {formData.nomeVitima || formData.tipoVitima ? `\nVítima: ${formData.nomeVitima || ''}${formData.nomeVitima && formData.tipoVitima ? ' / ' : ''}${formData.tipoVitima || ''}.` : ''}
+              {ocorrencia?.status ? `\nStatus no momento do relatório: ${ocorrencia.status}.` : ''}
+              {getGuarnicaoLabel(ocorrencia) !== 'Nao informada' ? `\nViatura: ${getGuarnicaoLabel(ocorrencia)}.` : ''}
+            </Text>
+          </View>
+
+          <View style={styles.a4Section}>
+            <Text style={styles.a4SectionTitle}>Observações de entrega</Text>
+            <Text style={styles.a4Box}>
+              {formData.unidadeDestino || formData.recebedorHospital || formData.horarioEntrega
+                ? 'Entrega registrada conforme dados informados acima.'
+                : ''}
+            </Text>
+          </View>
+
+          <View style={styles.a4FooterPack}>
+            <View style={styles.a4Signatures}>
+              <View style={styles.a4SignatureLine}>
+                <Text style={styles.a4SignatureName}>{socorrista?.nome || 'Profissional'}</Text>
+                <Text style={styles.a4SignatureText}>Assinatura do Socorrista</Text>
+              </View>
+              <View style={styles.a4SignatureLine}>
+                <Text style={styles.a4SignatureName}>{formatDateTime(new Date().toISOString())}</Text>
+                <Text style={styles.a4SignatureText}>Data/hora de geração</Text>
+              </View>
+            </View>
+            <View style={styles.a4Footer}>
+              <Text style={styles.a4FooterText}>PROJETI - Relatório de APH</Text>
+              <Text style={styles.a4FooterText}>Informação confidencial - sigilo médico</Text>
+            </View>
+          </View>
+
+          <View style={styles.a4PageNumber}>
+            <Text style={styles.a4PageNumberText}>Página 2 de 2</Text>
+          </View>
+        </View>
       </ScrollView>
     );
   };
@@ -906,27 +1138,53 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista 
         {section === 'conduta' && renderCondutaSection()}
         {section === 'preview' && renderPreviewSection()}
 
-        <View style={styles.footer}>
+        <View style={[styles.footer, section === 'preview' && styles.footerPreview]}>
           <TouchableOpacity
-            style={[styles.buttonSecondary, section === 'triagem' && styles.buttonDisabled]}
-            disabled={section === 'triagem'}
-            onPress={handlePrevious}
+            style={[styles.draftButton, savingDraft && styles.buttonDisabled]}
+            disabled={savingDraft}
+            onPress={() => void saveDraft()}
           >
-            <MaterialCommunityIcons name="chevron-left" size={20} color={colors.text} />
-            <Text style={styles.buttonText}>Anterior</Text>
+            <MaterialCommunityIcons name="content-save-outline" size={18} color={colors.primary} style={{ marginRight: 8 }} />
+            <Text style={styles.draftButtonText}>{savingDraft ? 'Salvando...' : 'Salvar rascunho'}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.buttonPrimary, section === 'preview' && styles.buttonDisabled]}
-            disabled={section === 'preview'}
-            onPress={handleNext}
-          >
-            <Text style={styles.buttonText}>Próximo</Text>
-            <MaterialCommunityIcons name="chevron-right" size={20} color="#FFF" />
-          </TouchableOpacity>
+          {section === 'preview' && (
+            <TouchableOpacity style={styles.generateButton} onPress={generatePDF}>
+              <Text style={styles.generateButtonText}>Compartilhar PDF</Text>
+            </TouchableOpacity>
+          )}
+
+          <View style={styles.footerNavigation}>
+            <TouchableOpacity
+              style={[styles.buttonSecondary, section === 'triagem' && styles.buttonDisabled]}
+              disabled={section === 'triagem'}
+              onPress={handlePrevious}
+            >
+              <MaterialCommunityIcons name="chevron-left" size={20} color={colors.text} />
+              <Text style={styles.buttonText}>Anterior</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.buttonPrimary, section === 'preview' && styles.buttonDisabled]}
+              disabled={section === 'preview'}
+              onPress={handleNext}
+            >
+              <Text style={styles.buttonText}>Próximo</Text>
+              <MaterialCommunityIcons name="chevron-right" size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
+  );
+}
+
+function PreviewLine({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.a4Line}>
+      <Text style={styles.a4LineLabel}>{label}</Text>
+      <Text style={styles.a4LineValue}>{value}</Text>
+    </View>
   );
 }
 
@@ -1123,6 +1381,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  summaryBox: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 16,
+    gap: 4,
+  },
+  summaryText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
   previewSection: {
     marginBottom: 16,
     paddingBottom: 12,
@@ -1142,6 +1414,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     marginBottom: 6,
+  },
+  previewClinicalGrid: {
+    gap: 12,
+  },
+  previewClinicalColumn: {
+    width: '100%',
   },
   previewItem: {
     marginBottom: 8,
@@ -1175,13 +1453,213 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     fontWeight: '600',
   },
+  a4PreviewScroll: {
+    alignItems: 'center',
+    paddingBottom: 20,
+    gap: 16,
+  },
+  a4Page: {
+    width: '100%',
+    maxWidth: 360,
+    aspectRatio: 1 / 1.414,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  a4Severity: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  a4SeverityText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  a4SeverityTime: {
+    color: '#ffffff',
+    fontSize: 8,
+    marginTop: 2,
+    fontWeight: '700',
+  },
+  a4Header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: '#111827',
+  },
+  a4Brand: {
+    color: '#111827',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  a4Subtitle: {
+    color: '#111827',
+    fontSize: 6,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    marginTop: 2,
+  },
+  a4HeaderMeta: {
+    alignItems: 'flex-end',
+    flexShrink: 1,
+  },
+  a4MetaText: {
+    color: '#111827',
+    fontSize: 6,
+    lineHeight: 9,
+    textAlign: 'right',
+  },
+  a4Section: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#d1d5db',
+  },
+  a4SectionTitle: {
+    color: '#111827',
+    fontSize: 7,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    borderBottomWidth: 1,
+    borderBottomColor: '#111827',
+    paddingBottom: 2,
+    marginBottom: 4,
+  },
+  a4Line: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginVertical: 1,
+  },
+  a4LineLabel: {
+    width: 62,
+    color: '#111827',
+    fontSize: 7,
+    fontWeight: '800',
+  },
+  a4LineValue: {
+    flex: 1,
+    color: '#111827',
+    fontSize: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: '#111827',
+    borderStyle: 'dotted',
+    paddingBottom: 1,
+  },
+  a4VitalsTable: {
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderColor: '#111827',
+  },
+  a4VitalsRow: {
+    flexDirection: 'row',
+  },
+  a4VitalsLabel: {
+    width: 48,
+    color: '#111827',
+    fontSize: 7,
+    fontWeight: '900',
+    padding: 3,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#111827',
+  },
+  a4VitalsValue: {
+    flex: 1,
+    color: '#111827',
+    fontSize: 7,
+    padding: 3,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#111827',
+  },
+  a4VitalsWide: {
+    flex: 1,
+    color: '#111827',
+    fontSize: 7,
+    padding: 3,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#111827',
+  },
+  a4Box: {
+    minHeight: 28,
+    color: '#111827',
+    fontSize: 7,
+    lineHeight: 10,
+    borderWidth: 1,
+    borderColor: '#111827',
+    padding: 5,
+  },
+  a4FooterPack: {
+    marginTop: 'auto',
+  },
+  a4Signatures: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 30,
+    paddingHorizontal: 12,
+    paddingTop: 14,
+    paddingBottom: 8,
+  },
+  a4SignatureLine: {
+    width: 108,
+    borderTopWidth: 1,
+    borderTopColor: '#111827',
+    alignItems: 'center',
+    paddingTop: 3,
+  },
+  a4SignatureName: {
+    color: '#111827',
+    fontSize: 6,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  a4SignatureText: {
+    color: '#111827',
+    fontSize: 6,
+    textAlign: 'center',
+  },
+  a4Footer: {
+    borderTopWidth: 1,
+    borderTopColor: '#94a3b8',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  a4FooterText: {
+    color: '#334155',
+    fontSize: 5,
+  },
+  a4PageNumber: {
+    marginTop: 'auto',
+    alignItems: 'center',
+    paddingBottom: 6,
+  },
+  a4PageNumberText: {
+    color: '#64748b',
+    fontSize: 6,
+    fontWeight: '700',
+  },
   generateButton: {
     backgroundColor: colors.primary,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 24,
-    marginBottom: 16,
+    width: '100%',
     paddingVertical: 14,
     borderRadius: 8,
   },
@@ -1190,13 +1668,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  draftButton: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  draftButtonText: {
+    color: colors.primary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
   footer: {
+    backgroundColor: colors.background,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  footerPreview: {
+    gap: 12,
+  },
+  footerNavigation: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    backgroundColor: colors.background,
   },
   buttonSecondary: {
     flex: 1,

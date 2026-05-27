@@ -490,6 +490,24 @@ Possiveis causas:
 - email ainda nao confirmado;
 - cadastro antigo nao vinculado a `auth_user_id`.
 
+### Nao e possivel cadastrar o mesmo Gmail como socorrista e solicitante
+
+Classificacao: regra de negocio / restricao de autenticacao.
+
+O Supabase Auth usa o email como identificador unico de login. Por isso, o mesmo Gmail nao pode ser cadastrado duas vezes para perfis diferentes, como `solicitante` e `socorrista`, mesmo que a senha seja a mesma.
+
+Comportamento esperado:
+
+- cada conta deve usar um email unico;
+- um CPF ou matricula tambem nao deve ser reaproveitado em outro tipo de acesso;
+- se a mesma pessoa precisar atuar em mais de um papel, o sistema precisa evoluir para permitir multiplos papeis no mesmo usuario, em vez de criar duas contas com o mesmo email.
+
+Mensagem recomendada para o app:
+
+```text
+Este email ja esta cadastrado. Use outro email ou entre com a conta existente.
+```
+
 ## Seguranca atual
 
 O projeto ja usa Supabase Auth para login real com senha hash gerenciada pelo Supabase.

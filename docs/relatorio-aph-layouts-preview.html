@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Previas de Layout - Relatorio APH</title>
+    <style>
+      :root {
+        --ink: #111827;
+        --muted: #64748b;
+        --line: #cbd5e1;
+        --paper: #ffffff;
+        --page-bg: #eef2f7;
+        --danger: #dc2626;
+        --soft: #f8fafc;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--page-bg);
+        color: var(--ink);
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+      .workspace {
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .toolbar {
+        margin-bottom: 20px;
+      }
+
+      .toolbar h1 {
+        margin: 0 0 6px;
+        font-size: 22px;
+      }
+
+      .toolbar p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .layout-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(320px, 1fr));
+        gap: 20px;
+        align-items: start;
+      }
+
+      .layout-card {
+        min-width: 0;
+      }
+
+      .layout-name {
+        margin: 0 0 10px;
+        font-size: 16px;
+        font-weight: 800;
+      }
+
+      .sheet {
+        width: 100%;
+        min-height: 880px;
+        background: var(--paper);
+        border: 1px solid #d7dee8;
+        box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14);
+        overflow: hidden;
+      }
+
+      .severity {
+        background: var(--danger);
+        color: #fff;
+        text-align: center;
+        padding: 12px 14px;
+        font-weight: 900;
+        letter-spacing: 0.5px;
+      }
+
+      .severity span {
+        display: block;
+        margin-top: 3px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .header {
+        padding: 14px 18px;
+        border-bottom: 3px solid #111827;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .brand {
+        font-weight: 900;
+        font-size: 15px;
+      }
+
+      .subtitle {
+        margin-top: 3px;
+        font-size: 10px;
+        text-transform: uppercase;
+        font-weight: 700;
+      }
+
+      .meta {
+        text-align: right;
+        font-size: 10px;
+        line-height: 1.45;
+      }
+
+      .section {
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .section-title {
+        margin-bottom: 7px;
+        padding-bottom: 3px;
+        border-bottom: 2px solid #111827;
+        font-size: 10px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .row {
+        display: flex;
+        gap: 8px;
+        margin: 4px 0;
+        font-size: 10px;
+      }
+
+      .label {
+        width: 92px;
+        flex: 0 0 92px;
+        font-weight: 800;
+      }
+
+      .value {
+        flex: 1;
+        min-height: 14px;
+        border-bottom: 1px dotted #111827;
+      }
+
+      .columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+
+      .box {
+        border: 1px solid #111827;
+        padding: 8px;
+        min-height: 46px;
+        font-size: 10px;
+        line-height: 1.45;
+      }
+
+      .vitals {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 10px;
+      }
+
+      .vitals td {
+        border: 1px solid #111827;
+        padding: 5px;
+      }
+
+      .footer-pack {
+        margin-top: auto;
+        padding-top: 18px;
+      }
+
+      .signatures {
+        display: flex;
+        justify-content: center;
+        gap: 32px;
+        padding: 16px 20px 12px;
+        font-size: 9px;
+        text-align: center;
+      }
+
+      .signature {
+        width: 150px;
+        border-top: 1px solid #111827;
+        padding-top: 5px;
+      }
+
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 8px 16px;
+        border-top: 1px solid #94a3b8;
+        font-size: 8px;
+        color: #334155;
+      }
+
+      .compact .sheet {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .compact .section {
+        padding-top: 9px;
+        padding-bottom: 9px;
+      }
+
+      .form-grid .sheet {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .panel-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        padding: 12px 16px;
+      }
+
+      .panel {
+        border: 1px solid #111827;
+        padding: 8px;
+      }
+
+      .panel.wide {
+        grid-column: 1 / -1;
+      }
+
+      .panel .section-title {
+        margin-bottom: 6px;
+      }
+
+      .timeline .sheet {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .summary-strip {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        padding: 12px 16px;
+        background: var(--soft);
+        border-bottom: 1px solid var(--line);
+        font-size: 10px;
+      }
+
+      .timeline-list {
+        padding: 8px 2px 2px;
+      }
+
+      .event {
+        display: grid;
+        grid-template-columns: 52px 1fr;
+        gap: 10px;
+        position: relative;
+        padding: 0 0 12px;
+        font-size: 10px;
+      }
+
+      .event:not(:last-child)::after {
+        content: "";
+        position: absolute;
+        left: 25px;
+        top: 18px;
+        bottom: -2px;
+        width: 1px;
+        background: #94a3b8;
+      }
+
+      .time {
+        z-index: 1;
+        height: 20px;
+        border: 1px solid #111827;
+        background: #fff;
+        display: grid;
+        place-items: center;
+        font-weight: 800;
+      }
+
+      .event-text {
+        padding-top: 3px;
+      }
+
+      @media print {
+        body {
+          background: #fff;
+        }
+
+        .toolbar {
+          display: none;
+        }
+
+        .layout-grid {
+          display: block;
+        }
+
+        .layout-card {
+          break-after: page;
+          margin-bottom: 0;
+        }
+
+        .layout-name {
+          display: none;
+        }
+
+        .sheet {
+          min-height: 287mm;
+          box-shadow: none;
+          border: 0;
+        }
+      }
+
+      @media (max-width: 1120px) {
+        .layout-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .sheet {
+          max-width: 760px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="workspace">
+      <div class="toolbar">
+        <h1>Previas de layout para o Relatorio de APH</h1>
+        <p>Modelos visuais para comparar antes de implementar no componente real.</p>
+      </div>
+
+      <section class="layout-grid">
+        <article class="layout-card compact">
+          <h2 class="layout-name">1. Clinico compacto</h2>
+          <div class="sheet">
+            <div class="severity">EMERGENCIA<span>ATENDIMENTO IMEDIATO</span></div>
+            <div class="header">
+              <div>
+                <div class="brand">PROJETI - SISTEMA DE APH</div>
+                <div class="subtitle">Relatorio de atendimento pre-hospitalar</div>
+              </div>
+              <div class="meta">
+                Data/hora: 27/05/2026 14:35<br />
+                Protocolo: #PROJ-20260525-F529E3BA<br />
+                Viatura: UR-001
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Identificacao</div>
+              <div class="row"><div class="label">Local</div><div class="value">Avenida Quinarana, 236 - Macapa - Amapa</div></div>
+              <div class="row"><div class="label">GPS</div><div class="value">0.0213, -51.1577</div></div>
+              <div class="row"><div class="label">Ocorrencia</div><div class="value">Trauma</div></div>
+              <div class="row"><div class="label">Status</div><div class="value">Em atendimento</div></div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Vitima</div>
+              <div class="row"><div class="label">Nome</div><div class="value">Maria da Silva</div></div>
+              <div class="row"><div class="label">Tipo</div><div class="value">Adulto</div></div>
+              <div class="row"><div class="label">Idade</div><div class="value">42 anos</div></div>
+              <div class="row"><div class="label">Contato</div><div class="value">(96) 99999-0000</div></div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Sinais vitais</div>
+              <table class="vitals">
+                <tr><td><strong>PA</strong></td><td>120/80 mmHg</td><td><strong>FC</strong></td><td>96 bpm</td></tr>
+                <tr><td><strong>SpO2</strong></td><td>94%</td><td><strong>Temp.</strong></td><td>37.4 C</td></tr>
+                <tr><td><strong>Leitura</strong></td><td colspan="3">27/05/2026 14:31</td></tr>
+                <tr><td><strong>Alerta</strong></td><td colspan="3">MEDIO - Saturacao abaixo do ideal</td></tr>
+              </table>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Avaliacao clinica</div>
+              <div class="box">Dor toracica, falta de ar, palidez. Cena segura, familiares presentes.</div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Conduta e destino</div>
+              <div class="box">Oxigenoterapia, monitoramento, transporte para unidade de referencia.</div>
+              <div class="row"><div class="label">Unidade</div><div class="value">Hospital de Emergencias de Macapa</div></div>
+              <div class="row"><div class="label">Recebedor</div><div class="value">Enf. Joao Pereira</div></div>
+            </div>
+
+            <div class="footer-pack">
+              <div class="signatures">
+                <div class="signature"><strong>Socorrista Demo</strong><br />Assinatura do socorrista</div>
+                <div class="signature">27/05/2026 14:35<br />Data/hora de geracao</div>
+              </div>
+              <div class="footer">
+                <span>Documento gerado automaticamente pelo sistema PROJETI</span>
+                <span>Informacao confidencial - sigilo medico</span>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="layout-card form-grid">
+          <h2 class="layout-name">2. Ficha em duas colunas</h2>
+          <div class="sheet">
+            <div class="severity">EMERGENCIA<span>ATENDIMENTO IMEDIATO</span></div>
+            <div class="header">
+              <div>
+                <div class="brand">RELATORIO APH</div>
+                <div class="subtitle">Ficha operacional de atendimento</div>
+              </div>
+              <div class="meta">
+                #PROJ-20260525-F529E3BA<br />
+                UR-001 | Em atendimento<br />
+                27/05/2026 14:35
+              </div>
+            </div>
+
+            <div class="panel-grid">
+              <div class="panel">
+                <div class="section-title">Identificacao</div>
+                <div class="row"><div class="label">Local</div><div class="value">Av. Quinarana, 236</div></div>
+                <div class="row"><div class="label">GPS</div><div class="value">0.0213, -51.1577</div></div>
+                <div class="row"><div class="label">Tipo</div><div class="value">Trauma</div></div>
+              </div>
+
+              <div class="panel">
+                <div class="section-title">Vitima</div>
+                <div class="row"><div class="label">Nome</div><div class="value">Maria da Silva</div></div>
+                <div class="row"><div class="label">Tipo</div><div class="value">Adulto</div></div>
+                <div class="row"><div class="label">Idade</div><div class="value">42 anos</div></div>
+              </div>
+
+              <div class="panel">
+                <div class="section-title">Sinais vitais</div>
+                <table class="vitals">
+                  <tr><td>PA</td><td>120/80</td></tr>
+                  <tr><td>FC</td><td>96 bpm</td></tr>
+                  <tr><td>SpO2</td><td>94%</td></tr>
+                  <tr><td>Temp.</td><td>37.4 C</td></tr>
+                </table>
+              </div>
+
+              <div class="panel">
+                <div class="section-title">Alertas</div>
+                <div class="box">MEDIO - Saturacao abaixo do ideal. Reavaliar oxigenacao.</div>
+              </div>
+
+              <div class="panel wide">
+                <div class="section-title">Avaliacao clinica</div>
+                <div class="box">Sintomas: dor toracica, falta de ar, palidez. Cena segura, familiares presentes.</div>
+              </div>
+
+              <div class="panel wide">
+                <div class="section-title">Conduta / evolucao</div>
+                <div class="box">Oxigenoterapia, monitoramento, controle de sinais vitais e transporte para unidade de referencia.</div>
+              </div>
+
+              <div class="panel wide">
+                <div class="section-title">Destino / entrega</div>
+                <div class="row"><div class="label">Unidade</div><div class="value">Hospital de Emergencias de Macapa</div></div>
+                <div class="row"><div class="label">Recebedor</div><div class="value">Enf. Joao Pereira</div></div>
+                <div class="row"><div class="label">Horario</div><div class="value">15:02</div></div>
+              </div>
+            </div>
+
+            <div class="footer-pack">
+              <div class="signatures">
+                <div class="signature"><strong>Socorrista Demo</strong><br />Assinatura do socorrista</div>
+                <div class="signature">27/05/2026 14:35<br />Data/hora de geracao</div>
+              </div>
+              <div class="footer">
+                <span>PROJETI - Relatorio de APH</span>
+                <span>Informacao confidencial - sigilo medico</span>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="layout-card selected-hybrid">
+          <h2 class="layout-name">Modelo selecionado: ficha compacta final</h2>
+          <div class="sheet">
+            <div class="severity">EMERGENCIA<span>ATENDIMENTO IMEDIATO</span></div>
+            <div class="header">
+              <div>
+                <div class="brand">PROJETI APH</div>
+                <div class="subtitle">Relatorio de atendimento pre-hospitalar</div>
+              </div>
+              <div class="meta">
+                Protocolo: #PROJ-20260525-F529E3BA<br />
+                Viatura: UR-001<br />
+                Socorrista: Socorrista Demo
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Identificacao</div>
+              <div class="row"><div class="label">Local</div><div class="value">Avenida Quinarana, 236 - Macapa - Amapa</div></div>
+              <div class="row"><div class="label">GPS</div><div class="value">0.0213, -51.1577</div></div>
+              <div class="row"><div class="label">Ocorrencia</div><div class="value">Trauma</div></div>
+              <div class="row"><div class="label">Status</div><div class="value">Em atendimento</div></div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Vitima</div>
+              <div class="row"><div class="label">Nome</div><div class="value">Maria da Silva</div></div>
+              <div class="row"><div class="label">Tipo</div><div class="value">Adulto</div></div>
+              <div class="row"><div class="label">Idade</div><div class="value">42 anos</div></div>
+              <div class="row"><div class="label">Contato</div><div class="value">(96) 99999-0000</div></div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Sinais vitais</div>
+              <table class="vitals">
+                <tr><td><strong>PA</strong></td><td>120/80 mmHg</td><td><strong>FC</strong></td><td>96 bpm</td></tr>
+                <tr><td><strong>SpO2</strong></td><td>94%</td><td><strong>Temp.</strong></td><td>37.4 C</td></tr>
+                <tr><td><strong>Leitura</strong></td><td colspan="3">27/05/2026 14:31</td></tr>
+                <tr><td><strong>Alerta</strong></td><td colspan="3">MEDIO - Saturacao abaixo do ideal</td></tr>
+              </table>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Avaliacao clinica</div>
+              <div class="box">Dor toracica, falta de ar, palidez. Cena segura, familiares presentes.</div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Conduta e destino</div>
+              <div class="box">Oxigenoterapia, monitoramento, transporte para unidade de referencia.</div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Destino / entrega</div>
+              <div class="row"><div class="label">Unidade</div><div class="value">Hospital de Emergencias de Macapa</div></div>
+              <div class="row"><div class="label">Recebedor</div><div class="value">Enf. Joao Pereira</div></div>
+              <div class="row"><div class="label">Horario</div><div class="value">15:02</div></div>
+            </div>
+
+            <div class="footer-pack">
+              <div class="signatures">
+                <div class="signature"><strong>Socorrista Demo</strong><br />Assinatura do socorrista</div>
+                <div class="signature">27/05/2026 14:35<br />Data/hora de geracao</div>
+              </div>
+              <div class="footer">
+                <span>PROJETI - Relatorio de APH</span>
+                <span>Informacao confidencial - sigilo medico</span>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="layout-card timeline">
+          <h2 class="layout-name">3. Timeline de atendimento</h2>
+          <div class="sheet">
+            <div class="severity">EMERGENCIA<span>ATENDIMENTO IMEDIATO</span></div>
+            <div class="header">
+              <div>
+                <div class="brand">PROJETI APH</div>
+                <div class="subtitle">Relatorio com linha do tempo</div>
+              </div>
+              <div class="meta">
+                Protocolo: #PROJ-20260525-F529E3BA<br />
+                Viatura: UR-001<br />
+                Socorrista: Socorrista Demo
+              </div>
+            </div>
+
+            <div class="summary-strip">
+              <div><strong>Vitima:</strong> Maria da Silva / Adulto / 42 anos</div>
+              <div><strong>Status:</strong> Em atendimento</div>
+              <div><strong>Local:</strong> Av. Quinarana, 236</div>
+              <div><strong>Ocorrencia:</strong> Trauma</div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Linha do tempo</div>
+              <div class="timeline-list">
+                <div class="event"><div class="time">14:10</div><div class="event-text"><strong>Ocorrencia registrada.</strong><br />Solicitante informa trauma em via publica.</div></div>
+                <div class="event"><div class="time">14:14</div><div class="event-text"><strong>Viatura empenhada.</strong><br />UR-001 deslocada pelo CIODES.</div></div>
+                <div class="event"><div class="time">14:22</div><div class="event-text"><strong>Chegada ao local.</strong><br />Cena segura, vitima consciente.</div></div>
+                <div class="event"><div class="time">14:31</div><div class="event-text"><strong>Sinais vitais coletados.</strong><br />FC 96 bpm, SpO2 94%, temperatura 37.4 C.</div></div>
+                <div class="event"><div class="time">14:45</div><div class="event-text"><strong>Transporte iniciado.</strong><br />Destino: Hospital de Emergencias de Macapa.</div></div>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Dados clinicos</div>
+              <div class="columns">
+                <div>
+                  <div class="box">Sintomas: dor toracica, falta de ar, palidez.</div>
+                </div>
+                <div>
+                  <table class="vitals">
+                    <tr><td>PA</td><td>120/80</td></tr>
+                    <tr><td>FC</td><td>96 bpm</td></tr>
+                    <tr><td>SpO2</td><td>94%</td></tr>
+                    <tr><td>Alerta</td><td>MEDIO</td></tr>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Conduta e entrega</div>
+              <div class="box">Oxigenoterapia, monitoramento, transporte para unidade. Recebido por Enf. Joao Pereira as 15:02.</div>
+            </div>
+
+            <div class="footer-pack">
+              <div class="signatures">
+                <div class="signature"><strong>Socorrista Demo</strong><br />Assinatura do socorrista</div>
+                <div class="signature">27/05/2026 14:35<br />Data/hora de geracao</div>
+              </div>
+              <div class="footer">
+                <span>Documento gerado automaticamente pelo sistema PROJETI</span>
+                <span>Informacao confidencial - sigilo medico</span>
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
