@@ -23,6 +23,7 @@ const STATUS_FLOW = ['guarnicao_empenhada', 'em_deslocamento', 'em_atendimento',
 
 const COLETOR_OTG_URL = 'http://127.0.0.1:8080/leitura';
 const INTERVALO_LEITURA_OTG = 3000;
+const INTERVALO_SALVAR_LEITURA_BANCO = 60000;
 
 function getStatusStyle(statusRaw: string | null | undefined) {
   const s = (statusRaw || '').toLowerCase();
@@ -70,6 +71,80 @@ function formatNumber(value: unknown, suffix: string) {
   return `${value}${suffix}`;
 }
 
+function toNumberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function possuiAlgumSinalVital(dados: any): boolean {
+  return (
+    toNumberOrNull(dados?.frequencia_cardiaca_bpm) !== null ||
+    toNumberOrNull(dados?.saturacao_spo2) !== null ||
+    toNumberOrNull(dados?.temperatura_c) !== null
+  );
+}
+
+function gerarAlertasAutomaticos(leitura: any) {
+  const alertasGerados: Array<{
+    nivel: string;
+    tipo: string;
+    mensagem: string;
+    instrucao: string;
+  }> = [];
+
+  const fc = toNumberOrNull(leitura?.frequencia_cardiaca_bpm);
+  const spo2 = toNumberOrNull(leitura?.saturacao_spo2);
+  const temp = toNumberOrNull(leitura?.temperatura_c);
+
+  if (spo2 !== null && spo2 < 94) {
+    alertasGerados.push({
+      nivel: spo2 < 90 ? 'critico' : 'moderado',
+      tipo: 'saturacao_baixa',
+      mensagem: `SpO2 em ${spo2}%. Possível hipoxemia.`,
+      instrucao: 'Reavaliar vias aéreas, ventilação, oxigenação e comunicar a equipe conforme protocolo.',
+    });
+  }
+
+  if (fc !== null && fc < 50) {
+    alertasGerados.push({
+      nivel: 'moderado',
+      tipo: 'bradicardia',
+      mensagem: `Frequência cardíaca em ${fc} bpm.`,
+      instrucao: 'Reavaliar perfusão, nível de consciência e sinais de choque conforme protocolo.',
+    });
+  }
+
+  if (fc !== null && fc > 120) {
+    alertasGerados.push({
+      nivel: fc > 150 ? 'critico' : 'moderado',
+      tipo: 'taquicardia',
+      mensagem: `Frequência cardíaca em ${fc} bpm.`,
+      instrucao: 'Reavaliar dor, ansiedade, sangramento, perfusão e evolução clínica da vítima.',
+    });
+  }
+
+  if (temp !== null && temp < 35) {
+    alertasGerados.push({
+      nivel: 'critico',
+      tipo: 'hipotermia',
+      mensagem: `Temperatura em ${temp} °C. Possível hipotermia.`,
+      instrucao: 'Proteger a vítima contra perda de calor e monitorar evolução.',
+    });
+  }
+
+  if (temp !== null && temp > 37.8) {
+    alertasGerados.push({
+      nivel: temp >= 39 ? 'critico' : 'moderado',
+      tipo: 'temperatura_alta',
+      mensagem: `Temperatura em ${temp} °C.`,
+      instrucao: 'Monitorar temperatura, estado geral e sinais associados.',
+    });
+  }
+
+  return alertasGerados;
+}
+
 export default function BombeiroDetalhe() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
@@ -85,10 +160,120 @@ export default function BombeiroDetalhe() {
   const [savingRelato, setSavingRelato] = useState(false);
   const [showRelatorioPDF, setShowRelatorioPDF] = useState(false);
   const [coletorAtivo, setColetorAtivo] = useState(false);
+  const [dedoDetectado, setDedoDetectado] = useState(false);
+  const [salvandoHistorico, setSalvandoHistorico] = useState(false);
   const [statusColetor, setStatusColetor] = useState('Aguardando Coletor OTG Backend');
 
   const ultimaLeituraOtgRef = useRef('');
+  const ultimoSalvamentoBancoRef = useRef(0);
+  const ultimaLeituraSalvaRef = useRef('');
+  const salvandoLeituraRef = useRef(false);
   const user = getCurrentUser();
+
+  const salvarLeituraNoBanco = useCallback(async (dados: any) => {
+    if (!ocorrenciaId) return;
+    if (!dados?.dedo_detectado) return;
+    if (!possuiAlgumSinalVital(dados)) return;
+    if (salvandoLeituraRef.current) return;
+
+    const agora = Date.now();
+    const leituraParaControle = JSON.stringify({
+      frequencia_cardiaca_bpm: dados.frequencia_cardiaca_bpm,
+      saturacao_spo2: dados.saturacao_spo2,
+      temperatura_c: dados.temperatura_c,
+      dedo_detectado: dados.dedo_detectado,
+      status: dados.status,
+    });
+
+    if (agora - ultimoSalvamentoBancoRef.current < INTERVALO_SALVAR_LEITURA_BANCO) {
+      return;
+    }
+
+    if (leituraParaControle === ultimaLeituraSalvaRef.current) {
+      return;
+    }
+
+    salvandoLeituraRef.current = true;
+    setSalvandoHistorico(true);
+
+    try {
+      const coletadoEm = dados.coletado_em ?? new Date().toISOString();
+
+      const payload = {
+        ocorrencia_id: ocorrenciaId,
+        frequencia_cardiaca_bpm:
+          toNumberOrNull(dados.frequencia_cardiaca_bpm) !== null
+            ? Math.round(Number(dados.frequencia_cardiaca_bpm))
+            : null,
+        saturacao_spo2: toNumberOrNull(dados.saturacao_spo2),
+        temperatura_c: toNumberOrNull(dados.temperatura_c),
+        coletado_em: coletadoEm,
+        payload_json: dados,
+      };
+
+      const { data: leituraInserida, error: erroLeitura } = await supabase
+        .from('leituras_sinais_vitais')
+        .insert(payload)
+        .select('id, frequencia_cardiaca_bpm, saturacao_spo2, temperatura_c, coletado_em')
+        .single();
+
+      if (erroLeitura) {
+        console.error('[Sensores OTG] Erro ao salvar leitura:', erroLeitura);
+        setStatusColetor('Leitura recebida, mas não foi possível salvar no banco.');
+        return;
+      }
+
+      ultimoSalvamentoBancoRef.current = agora;
+      ultimaLeituraSalvaRef.current = leituraParaControle;
+
+      const alertasGerados = gerarAlertasAutomaticos(dados);
+
+      if (alertasGerados.length > 0 && leituraInserida?.id) {
+        const { data: alertasExistentes, error: erroBuscaAlertas } = await supabase
+          .from('alertas_sinais_vitais')
+          .select('tipo')
+          .eq('ocorrencia_id', ocorrenciaId)
+          .eq('resolvido', false);
+
+        if (erroBuscaAlertas) {
+          console.error('[Sensores OTG] Erro ao verificar alertas existentes:', erroBuscaAlertas);
+        }
+
+        const tiposExistentes = new Set((alertasExistentes || []).map((item: any) => item.tipo));
+
+        const novosAlertas = alertasGerados
+          .filter((alerta) => !tiposExistentes.has(alerta.tipo))
+          .map((alerta) => ({
+            ocorrencia_id: ocorrenciaId,
+            leitura_id: leituraInserida.id,
+            nivel: alerta.nivel,
+            tipo: alerta.tipo,
+            mensagem: alerta.mensagem,
+            instrucao: alerta.instrucao,
+            resolvido: false,
+            criado_em: new Date().toISOString(),
+          }));
+
+        if (novosAlertas.length > 0) {
+          const { data: alertasCriados, error: erroAlertas } = await supabase
+            .from('alertas_sinais_vitais')
+            .insert(novosAlertas)
+            .select('id, nivel, tipo, mensagem, instrucao, criado_em');
+
+          if (erroAlertas) {
+            console.error('[Sensores OTG] Erro ao salvar alertas:', erroAlertas);
+          } else if (alertasCriados?.length) {
+            setAlertas((atuais) => [...alertasCriados, ...atuais].slice(0, 5));
+          }
+        }
+      }
+
+      setStatusColetor('Leitura salva no histórico da ocorrência.');
+    } finally {
+      salvandoLeituraRef.current = false;
+      setSalvandoHistorico(false);
+    }
+  }, [ocorrenciaId]);
 
   const buscarLeituraOtg = useCallback(async () => {
     try {
@@ -96,44 +281,57 @@ export default function BombeiroDetalhe() {
 
       if (!resposta.ok) {
         setColetorAtivo(false);
+        setDedoDetectado(false);
         setStatusColetor('Coletor OTG não respondeu corretamente.');
         return;
       }
 
       const dados = await resposta.json();
+      const dedoOk = dados?.dedo_detectado === true;
+
+      setColetorAtivo(true);
+      setDedoDetectado(dedoOk);
+
+      if (!dedoOk) {
+        setStatusColetor('Dedo não detectado. Aguardando posicionamento no sensor.');
+        return;
+      }
+
+      if (!possuiAlgumSinalVital(dados)) {
+        setStatusColetor('Dedo detectado, aguardando sinais vitais válidos.');
+        return;
+      }
 
       const leituraAtualJson = JSON.stringify({
         frequencia_cardiaca_bpm: dados.frequencia_cardiaca_bpm,
         saturacao_spo2: dados.saturacao_spo2,
         temperatura_c: dados.temperatura_c,
-        coletado_em: dados.coletado_em,
+        dedo_detectado: dados.dedo_detectado,
         status: dados.status,
       });
 
-      if (leituraAtualJson === ultimaLeituraOtgRef.current) {
-        setColetorAtivo(true);
-        setStatusColetor('Coletor OTG conectado. Aguardando nova leitura.');
-        return;
+      if (leituraAtualJson !== ultimaLeituraOtgRef.current) {
+        ultimaLeituraOtgRef.current = leituraAtualJson;
+
+        setUltimaLeitura({
+          id: 'otg-local',
+          frequencia_cardiaca_bpm: dados.frequencia_cardiaca_bpm,
+          saturacao_spo2: dados.saturacao_spo2,
+          temperatura_c: dados.temperatura_c,
+          coletado_em: dados.coletado_em ?? new Date().toISOString(),
+          origem: 'coletor_otg',
+          status: dados.status,
+        });
       }
 
-      ultimaLeituraOtgRef.current = leituraAtualJson;
-      setColetorAtivo(true);
       setStatusColetor(dados.status ? `Coletor OTG: ${dados.status}` : 'Leitura recebida do Coletor OTG.');
-
-      setUltimaLeitura({
-        id: 'otg-local',
-        frequencia_cardiaca_bpm: dados.frequencia_cardiaca_bpm,
-        saturacao_spo2: dados.saturacao_spo2,
-        temperatura_c: dados.temperatura_c,
-        coletado_em: dados.coletado_em ?? new Date().toISOString(),
-        origem: 'coletor_otg',
-        status: dados.status,
-      });
+      await salvarLeituraNoBanco(dados);
     } catch (error) {
       setColetorAtivo(false);
-      setStatusColetor('Abra o Coletor OTG Backend e inicie o backend local.');
+      setDedoDetectado(false);
+      setStatusColetor('Abra o Coletor OTG Auto ou conecte o Arduino via OTG.');
     }
-  }, []);
+  }, [salvarLeituraNoBanco]);
 
   const loadRelatos = useCallback(async () => {
     if (!ocorrenciaId) return;
@@ -472,7 +670,7 @@ export default function BombeiroDetalhe() {
           ) : (
             <View style={styles.emptySensorsBox}>
               <MaterialCommunityIcons name="usb-port" size={24} color={colors.placeholder} style={{ marginBottom: 8 }} />
-              <Text style={[styles.cardText, { textAlign: 'center' }]}>Nenhum dado recebido. Abra o Coletor OTG Backend.</Text>
+              <Text style={[styles.cardText, { textAlign: 'center' }]}>Nenhum dado recebido. Conecte o Arduino via OTG e posicione o dedo no sensor.</Text>
             </View>
           )}
 
@@ -482,13 +680,23 @@ export default function BombeiroDetalhe() {
           >
             <MaterialCommunityIcons name="usb-port" size={16} color="#FFF" style={{ marginRight: 6 }} />
             <Text style={styles.buttonSecondaryText}>
-              {coletorAtivo ? 'Atualizar Sensores OTG' : 'Conectar Coletor OTG'}
+              {coletorAtivo ? 'Atualizar Sensores OTG' : 'Buscar Coletor OTG'}
             </Text>
           </TouchableOpacity>
 
           <Text style={styles.cardLabel}>
             {statusColetor}
           </Text>
+
+          <Text style={styles.cardLabel}>
+            {dedoDetectado
+              ? 'Dedo detectado. Leituras válidas serão salvas a cada 1 minuto.'
+              : 'Dedo não detectado. Nenhuma leitura será salva no banco.'}
+          </Text>
+
+          {salvandoHistorico ? (
+            <Text style={styles.cardLabel}>Salvando leitura no histórico...</Text>
+          ) : null}
 
           {alertas.length > 0 && (
             <View style={{ marginTop: 16 }}>
