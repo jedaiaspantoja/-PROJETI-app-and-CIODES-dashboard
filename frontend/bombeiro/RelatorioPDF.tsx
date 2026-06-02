@@ -53,6 +53,55 @@ function fieldValue(value: unknown, suffix = '') {
   return text ? `${text}${suffix}` : '';
 }
 
+
+function escapeHtml(value: unknown) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function formatVitalHistoryValue(value: unknown, suffix: string) {
+  if (value === null || value === undefined || value === '') return '-';
+  return `${value}${suffix}`;
+}
+
+function buildHistoricoSinaisHtml(historico: any[], alertas?: any[]) {
+  if (!historico || historico.length === 0) {
+    return `
+      <tr>
+        <td colspan="5" class="history-empty">Nenhuma leitura histórica registrada para esta ocorrência.</td>
+      </tr>
+    `;
+  }
+
+  const alertMap = new Map<any, any[]>();
+  (alertas || []).forEach((a) => {
+    if (!a || a.leitura_id == null) return;
+    const list = alertMap.get(a.leitura_id) || [];
+    list.push(a);
+    alertMap.set(a.leitura_id, list);
+  });
+
+  return historico
+    .map((leitura) => {
+      const alerts = (alertMap.get(leitura.id) || []).map((a: any) => a.mensagem || a.tipo || '').filter(Boolean).join(' • ');
+      return `
+      <tr>
+        <td>${escapeHtml(formatDateTime(leitura.coletado_em))}</td>
+        <td>${escapeHtml(formatVitalHistoryValue(leitura.frequencia_cardiaca_bpm, ' bpm'))}</td>
+        <td>${escapeHtml(formatVitalHistoryValue(leitura.saturacao_spo2, ' %'))}</td>
+        <td>${escapeHtml(formatVitalHistoryValue(leitura.temperatura_c, ' °C'))}</td>
+        <td>${escapeHtml(alerts || '-')}</td>
+      </tr>
+    `;
+    })
+    .join('');
+}
+
 function getGuarnicaoLabel(ocorrencia: any) {
   const guarnicao = ocorrencia?.empenhos?.[0]?.guarnicao;
   if (!guarnicao) return 'Nao informada';
@@ -157,6 +206,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
   const [savingDraft, setSavingDraft] = useState(false);
   
   const [formData, setFormData] = useState<RelatorioData>(() => buildInitialFormData(ocorrencia, ultimaLeitura, alertas));
+  const [historicoLeituras, setHistoricoLeituras] = useState<any[]>([]);
 
   const [expandedSections, setExpandedSections] = useState({
     vitima: false,
@@ -172,13 +222,31 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
 
     async function loadDraft() {
       const baseData = buildInitialFormData(ocorrencia, ultimaLeitura, alertas);
-      const { data, error } = await supabase
-        .from('formularios_ocorrencia')
-        .select('dados_json')
-        .eq('ocorrencia_id', ocorrencia.id)
-        .maybeSingle();
+
+      const [draftResult, historicoResult] = await Promise.all([
+        supabase
+          .from('formularios_ocorrencia')
+          .select('dados_json')
+          .eq('ocorrencia_id', ocorrencia.id)
+          .maybeSingle(),
+        supabase
+          .from('leituras_sinais_vitais')
+          .select('id, frequencia_cardiaca_bpm, saturacao_spo2, temperatura_c, coletado_em')
+          .eq('ocorrencia_id', ocorrencia.id)
+          .order('coletado_em', { ascending: true }),
+      ]);
 
       if (!isActive) return;
+
+      const { data, error } = draftResult;
+      const { data: historicoData, error: historicoError } = historicoResult;
+
+      if (historicoError) {
+        console.error('[RelatorioPDF] erro ao carregar historico de sinais vitais:', historicoError);
+        setHistoricoLeituras([]);
+      } else {
+        setHistoricoLeituras(historicoData || []);
+      }
 
       if (error) {
         console.error('[RelatorioPDF] erro ao carregar rascunho:', error);
@@ -282,6 +350,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
       const dateStr = now.toLocaleDateString('pt-BR');
       const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const triageInfo = getTriagemInfo(formData.triagem);
+      const historicoSinaisHtml = buildHistoricoSinaisHtml(historicoLeituras, alertas);
 
       const htmlContent = `
         <!DOCTYPE html>
@@ -449,6 +518,32 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
             .vitals-value {
               width: 35%;
             }
+
+
+            .history-table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 9px;
+              margin-top: 6px;
+            }
+
+            .history-table th,
+            .history-table td {
+              border: 1px solid #000;
+              padding: 4px 5px;
+              text-align: left;
+            }
+
+            .history-table th {
+              background-color: #f0f0f0;
+              font-weight: bold;
+            }
+
+            .history-empty {
+              text-align: center;
+              color: #555;
+              font-style: italic;
+            }
             
             /* SINTOMAS */
             .symptoms-box {
@@ -572,29 +667,23 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
               </div>
             </div>
 
+            <!-- Sinais vitais individuais removidos: apenas histórico será exibido abaixo -->
+
             <div class="section">
-              <div class="section-title">Sinais vitais</div>
-              <table class="vitals-table">
-                <tr>
-                  <td class="vitals-label">PA</td>
-                  <td class="vitals-value">${fieldValue(formData.pa, ' mmHg')}</td>
-                  <td class="vitals-label">FC</td>
-                  <td class="vitals-value">${fieldValue(formData.fc, ' bpm')}</td>
-                </tr>
-                <tr>
-                  <td class="vitals-label">SpO₂</td>
-                  <td class="vitals-value">${fieldValue(formData.spo2, ' %')}</td>
-                  <td class="vitals-label">Temp.</td>
-                  <td class="vitals-value">${fieldValue(formData.temperatura, ' °C')}</td>
-                </tr>
-                <tr>
-                  <td class="vitals-label">Leitura</td>
-                  <td colspan="3">${fieldValue(formData.horarioLeitura)}</td>
-                </tr>
-                <tr>
-                  <td class="vitals-label">Alerta</td>
-                  <td colspan="3">${fieldValue(formData.alertaClinico)}</td>
-                </tr>
+              <div class="section-title">Histórico de sinais vitais</div>
+              <table class="history-table">
+                <thead>
+                  <tr>
+                    <th>Horário</th>
+                    <th>FC</th>
+                    <th>SpO₂</th>
+                    <th>Temp.</th>
+                    <th>Alertas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${historicoSinaisHtml}
+                </tbody>
               </table>
             </div>
             
@@ -792,64 +881,27 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
         
         {expandedSections.vitais && (
           <View style={styles.accordionContent}>
-            <Text style={styles.inputLabel}>PA - Pressão Arterial (ex: 120/80)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ex: 120/80 mmHg"
-              placeholderTextColor={colors.placeholder}
-              value={formData.pa}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, pa: text }))}
-            />
-            
-            <Text style={styles.inputLabel}>FC - Frequência Cardíaca (bpm)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Batimentos por minuto"
-              placeholderTextColor={colors.placeholder}
-              keyboardType="numeric"
-              value={formData.fc}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, fc: text }))}
-            />
-            
-            <Text style={styles.inputLabel}>SpO₂ - Saturação de Oxigênio (%)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Percentual"
-              placeholderTextColor={colors.placeholder}
-              keyboardType="numeric"
-              value={formData.spo2}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, spo2: text }))}
-            />
-            
-            <Text style={styles.inputLabel}>Temperatura (°C)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ex: 37.5"
-              placeholderTextColor={colors.placeholder}
-              keyboardType="decimal-pad"
-              value={formData.temperatura}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, temperatura: text }))}
-            />
-
-            <Text style={styles.inputLabel}>Horário da leitura</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Horário da última leitura"
-              placeholderTextColor={colors.placeholder}
-              value={formData.horarioLeitura}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, horarioLeitura: text }))}
-            />
-
-            <Text style={styles.inputLabel}>Alerta clínico associado</Text>
-            <TextInput
-              style={[styles.input, { minHeight: 70 }]}
-              placeholder="Alerta clínico ativo ou observação dos sensores"
-              placeholderTextColor={colors.placeholder}
-              multiline
-              textAlignVertical="top"
-              value={formData.alertaClinico}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, alertaClinico: text }))}
-            />
+            <Text style={styles.inputLabel}>Histórico de leituras desta ocorrência (automático)</Text>
+            {historicoLeituras.length === 0 ? (
+              <Text style={styles.historyEmptyText}>Nenhuma leitura salva no histórico ainda.</Text>
+            ) : (
+              <View style={styles.historyList}>
+                {historicoLeituras.map((leitura) => {
+                  const alertsFor = (alertas || []).filter(a => a.leitura_id === leitura.id);
+                  return (
+                    <View key={leitura.id} style={styles.historyItem}>
+                      <Text style={styles.historyTime}>{formatDateTime(leitura.coletado_em)}</Text>
+                      <Text style={styles.historyValues}>
+                        FC: {formatVitalHistoryValue(leitura.frequencia_cardiaca_bpm, ' bpm')}  •  SpO₂: {formatVitalHistoryValue(leitura.saturacao_spo2, ' %')}  •  Temp.: {formatVitalHistoryValue(leitura.temperatura_c, ' °C')}
+                      </Text>
+                      {alertsFor.length > 0 && (
+                        <Text style={styles.alertSummary}>Alertas: {alertsFor.map(a => a.mensagem || a.tipo).filter(Boolean).join(' • ')}</Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -1007,30 +1059,30 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
             <PreviewLine label="Contato" value={fieldValue(formData.contatoEmergencia)} />
           </View>
 
+          {/* Seção de sinais vitais individuais removida; histórico com alertas abaixo */}
+
           <View style={styles.a4Section}>
-            <Text style={styles.a4SectionTitle}>Sinais vitais</Text>
-            <View style={styles.a4VitalsTable}>
-              <View style={styles.a4VitalsRow}>
-                <Text style={styles.a4VitalsLabel}>PA</Text>
-                <Text style={styles.a4VitalsValue}>{fieldValue(formData.pa, ' mmHg')}</Text>
-                <Text style={styles.a4VitalsLabel}>FC</Text>
-                <Text style={styles.a4VitalsValue}>{fieldValue(formData.fc, ' bpm')}</Text>
+            <Text style={styles.a4SectionTitle}>Histórico de sinais vitais</Text>
+            {historicoLeituras.length === 0 ? (
+              <Text style={styles.a4Box}>Nenhuma leitura histórica registrada para esta ocorrência.</Text>
+            ) : (
+              <View style={styles.a4HistoryTable}>
+                {historicoLeituras.map((leitura) => {
+                  const alertsFor = (alertas || []).filter(a => a.leitura_id === leitura.id);
+                  return (
+                    <View key={leitura.id} style={styles.a4HistoryRow}>
+                      <Text style={styles.a4HistoryTime}>{formatDateTime(leitura.coletado_em)}</Text>
+                      <Text style={styles.a4HistoryValue}>FC {formatVitalHistoryValue(leitura.frequencia_cardiaca_bpm, ' bpm')}</Text>
+                      <Text style={styles.a4HistoryValue}>SpO₂ {formatVitalHistoryValue(leitura.saturacao_spo2, ' %')}</Text>
+                      <Text style={styles.a4HistoryValue}>T {formatVitalHistoryValue(leitura.temperatura_c, ' °C')}</Text>
+                      {alertsFor.length > 0 && (
+                        <Text style={styles.a4HistoryAlert}>Alertas: {alertsFor.map(a => a.mensagem || a.tipo).filter(Boolean).join(' • ')}</Text>
+                      )}
+                    </View>
+                  );
+                })}
               </View>
-              <View style={styles.a4VitalsRow}>
-                <Text style={styles.a4VitalsLabel}>SpO₂</Text>
-                <Text style={styles.a4VitalsValue}>{fieldValue(formData.spo2, ' %')}</Text>
-                <Text style={styles.a4VitalsLabel}>Temp.</Text>
-                <Text style={styles.a4VitalsValue}>{fieldValue(formData.temperatura, ' °C')}</Text>
-              </View>
-              <View style={styles.a4VitalsRow}>
-                <Text style={styles.a4VitalsLabel}>Leitura</Text>
-                <Text style={styles.a4VitalsWide}>{fieldValue(formData.horarioLeitura)}</Text>
-              </View>
-              <View style={styles.a4VitalsRow}>
-                <Text style={styles.a4VitalsLabel}>Alerta</Text>
-                <Text style={styles.a4VitalsWide}>{fieldValue(formData.alertaClinico)}</Text>
-              </View>
-            </View>
+            )}
           </View>
 
           <View style={styles.a4Section}>
@@ -1724,6 +1776,76 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  historyList: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 16,
+  },
+  historyItem: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingVertical: 8,
+  },
+  historyTime: {
+    color: colors.placeholder,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  historyValues: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  historyEmptyText: {
+    color: colors.placeholder,
+    fontSize: 13,
+    fontStyle: 'italic',
+    marginBottom: 16,
+  },
+  alertSummary: {
+    color: '#991b1b',
+    fontSize: 12,
+    marginTop: 6,
+  },
+  a4HistoryTable: {
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderColor: '#111827',
+  },
+  a4HistoryRow: {
+    flexDirection: 'row',
+  },
+  a4HistoryTime: {
+    flex: 1.4,
+    color: '#111827',
+    fontSize: 5.5,
+    padding: 3,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#111827',
+  },
+  a4HistoryValue: {
+    flex: 1,
+    color: '#111827',
+    fontSize: 5.5,
+    padding: 3,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#111827',
+  },
+  a4HistoryAlert: {
+    flex: 1,
+    color: '#991b1b',
+    fontSize: 5.5,
+    padding: 3,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#111827',
   },
 });
 

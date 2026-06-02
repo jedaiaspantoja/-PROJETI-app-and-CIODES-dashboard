@@ -22,7 +22,7 @@ import LoadingState from '../shared/LoadingState';
 const STATUS_FLOW = ['guarnicao_empenhada', 'em_deslocamento', 'em_atendimento', 'finalizada'];
 
 const COLETOR_OTG_URL = 'http://127.0.0.1:8080/leitura';
-const INTERVALO_LEITURA_OTG = 3000;
+const INTERVALO_LEITURA_OTG = 30000;
 const INTERVALO_SALVAR_LEITURA_BANCO = 60000;
 
 function getStatusStyle(statusRaw: string | null | undefined) {
@@ -226,7 +226,8 @@ export default function BombeiroDetalhe() {
       ultimoSalvamentoBancoRef.current = agora;
       ultimaLeituraSalvaRef.current = leituraParaControle;
 
-      const alertasGerados = gerarAlertasAutomaticos(dados);
+      const alertasGerados = gerarAlertasAutomaticos(leituraInserida);
+      let quantidadeAlertasCriados = 0;
 
       if (alertasGerados.length > 0 && leituraInserida?.id) {
         const { data: alertasExistentes, error: erroBuscaAlertas } = await supabase
@@ -262,13 +263,31 @@ export default function BombeiroDetalhe() {
 
           if (erroAlertas) {
             console.error('[Sensores OTG] Erro ao salvar alertas:', erroAlertas);
-          } else if (alertasCriados?.length) {
-            setAlertas((atuais) => [...alertasCriados, ...atuais].slice(0, 5));
+          } else {
+            quantidadeAlertasCriados = alertasCriados?.length || 0;
           }
         }
       }
 
-      setStatusColetor('Leitura salva no histórico da ocorrência.');
+      const { data: alertasAtualizados, error: erroAtualizarAlertas } = await supabase
+        .from('alertas_sinais_vitais')
+        .select('id, nivel, tipo, mensagem, instrucao, criado_em')
+        .eq('ocorrencia_id', ocorrenciaId)
+        .eq('resolvido', false)
+        .order('criado_em', { ascending: false })
+        .limit(5);
+
+      if (erroAtualizarAlertas) {
+        console.error('[Sensores OTG] Erro ao recarregar alertas:', erroAtualizarAlertas);
+      } else {
+        setAlertas(alertasAtualizados || []);
+      }
+
+      setStatusColetor(
+        quantidadeAlertasCriados > 0
+          ? `Leitura salva e ${quantidadeAlertasCriados} alerta(s) gerado(s).`
+          : 'Leitura salva no histórico da ocorrência.'
+      );
     } finally {
       salvandoLeituraRef.current = false;
       setSalvandoHistorico(false);
