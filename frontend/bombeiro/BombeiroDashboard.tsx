@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Linking,
@@ -76,6 +76,7 @@ export default function BombeiroDashboard({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [erroGuarnicao, setErroGuarnicao] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ativas');
+  const channelsRef = useRef<any[]>([]);
 
   async function carregarOcorrencias() {
     try {
@@ -142,6 +143,41 @@ export default function BombeiroDashboard({ navigation }: any) {
         .filter(Boolean) as OcorrenciaRow[];
 
       setOcorrencias(rows);
+
+      // configurar assinatura Realtime (uma por guarnição) para atualizações
+      try {
+        // limpa assinaturas anteriores caso existam
+        if (channelsRef.current && channelsRef.current.length) {
+          channelsRef.current.forEach((ch: any) => {
+            try {
+              ch.unsubscribe();
+            } catch (e) {
+              // ignore
+            }
+          });
+        }
+
+        const newChannels: any[] = [];
+        for (const gid of guarnicaoIds) {
+          const ch = supabase
+            .channel(`ocorrencia_empenhos_guarnicao_${gid}`)
+            .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'ocorrencia_empenhos', filter: `guarnicao_id=eq.${gid}` },
+              (payload) => {
+                console.log('[Realtime] ocorrencia_empenhos', gid, payload.eventType || payload.event, payload.new || payload.old);
+                // atualiza somente os dados sem recriar canais
+                void refreshOcorrencias(guarnicaoIds);
+              }
+            )
+            .subscribe();
+
+          newChannels.push(ch);
+        }
+        channelsRef.current = newChannels;
+      } catch (e) {
+        console.warn('[Realtime] nao foi possivel criar assinaturas realtime', e);
+      }
     } catch (e) {
       console.error('[SocorristaDashboard] Erro inesperado:', e);
       setErroGuarnicao('Erro inesperado ao carregar ocorrencias.');
@@ -149,6 +185,48 @@ export default function BombeiroDashboard({ navigation }: any) {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  }
+
+  // busca leve para atualizar a lista sem tocar nas assinaturas
+  async function refreshOcorrencias(guarnicaoIdsParam?: Array<number | string>) {
+    try {
+      const user = getCurrentUser();
+      if (!user) return;
+
+      const { data: membros } = await supabase
+        .from('guarnicao_membros')
+        .select('guarnicao_id')
+        .eq('usuario_id', user.id)
+        .eq('ativo', true);
+
+      const guarnicaoIds = (guarnicaoIdsParam && guarnicaoIdsParam.length) ? guarnicaoIdsParam : Array.from(new Set(((membros || []) as any[]).map((m) => m.guarnicao_id).filter(Boolean)));
+      if (!guarnicaoIds.length) return;
+
+      const { data } = await supabase
+        .from('ocorrencia_empenhos')
+        .select(
+          `
+          ocorrencia:ocorrencia_id (
+            id,
+            protocolo,
+            criada_em,
+            status,
+            latitude,
+            longitude,
+            endereco_texto,
+            tipo_ocorrencia:tipo_ocorrencia_id (nome),
+            tipo_vitima:tipo_vitima_id (nome)
+          )
+        `
+        )
+        .in('guarnicao_id', guarnicaoIds)
+        .order('criado_em', { ascending: false });
+
+      const rows = ((data as any[]) || []).map((row) => row.ocorrencia).filter(Boolean) as OcorrenciaRow[];
+      setOcorrencias(rows);
+    } catch (err) {
+      console.warn('[refreshOcorrencias] erro', err);
     }
   }
 
@@ -164,7 +242,19 @@ export default function BombeiroDashboard({ navigation }: any) {
     };
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
-    return () => backHandler.remove();
+    return () => {
+      backHandler.remove();
+      // cleanup channels
+      if (channelsRef.current && channelsRef.current.length) {
+        channelsRef.current.forEach((ch: any) => {
+          try {
+            ch.unsubscribe();
+          } catch (e) {
+            // ignore
+          }
+        });
+      }
+    };
   }, [navigation]);
 
   useFocusEffect(
@@ -260,7 +350,13 @@ export default function BombeiroDashboard({ navigation }: any) {
     <View style={styles.container}>
       <TopHeader title="Dashboard CIODES" />
       <View style={styles.content}>
-        <Text style={[styles.title, { marginTop: 16 }]}>Minhas Ocorrências</Text>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { marginTop: 16 }]}>Minhas Ocorrências</Text>
+          <TouchableOpacity style={styles.refreshButton} onPress={() => onRefresh()}>
+            <MaterialCommunityIcons name="refresh" size={18} color={colors.primary} />
+            <Text style={styles.refreshText}>Atualizar</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.subtitle}>Acompanhe os chamados atribuídos à sua viatura.</Text>
 
       {erroGuarnicao && (
@@ -327,6 +423,25 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '800',
     color: colors.text,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+  },
+  refreshText: {
+    color: colors.primary,
+    fontWeight: '700',
+    marginLeft: 6,
   },
   subtitle: {
     fontSize: 15,

@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import * as Location from 'expo-location';
 import TopHeader from '../shared/TopHeader';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
@@ -168,6 +169,9 @@ export default function BombeiroDetalhe() {
   const ultimoSalvamentoBancoRef = useRef(0);
   const ultimaLeituraSalvaRef = useRef('');
   const salvandoLeituraRef = useRef(false);
+  const locationSubscriptionRef = useRef<any>(null);
+  const lastLocationRef = useRef<Location.LocationObject | null>(null);
+  const isAutoStatusUpdatingRef = useRef(false);
   const user = getCurrentUser();
 
   const salvarLeituraNoBanco = useCallback(async (dados: any) => {
@@ -294,6 +298,89 @@ export default function BombeiroDetalhe() {
     }
   }, [ocorrenciaId]);
 
+  function getDistanceMeters(from: Location.LocationObject, to: Location.LocationObject) {
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const lat1 = from.coords.latitude;
+    const lon1 = from.coords.longitude;
+    const lat2 = to.coords.latitude;
+    const lon2 = to.coords.longitude;
+    const R = 6371000;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  async function attemptAutoAdvanceToMoving() {
+    if (!detalhe || !detalhe.id || isAutoStatusUpdatingRef.current) return;
+    const current = (detalhe.status || '').toLowerCase();
+    if (current !== 'guarnicao_empenhada') return;
+
+    isAutoStatusUpdatingRef.current = true;
+    try {
+      await persistStatus('em_deslocamento');
+      setStatusColetor('Movimento detectado. Status atualizado para Em deslocamento.');
+    } catch (error) {
+      console.warn('[SocorristaDetalhe] falha ao atualizar para em_deslocamento', error);
+    } finally {
+      isAutoStatusUpdatingRef.current = false;
+    }
+  }
+
+  async function attemptAutoAdvanceToAttending() {
+    if (!detalhe || !detalhe.id || isAutoStatusUpdatingRef.current) return;
+    const current = (detalhe.status || '').toLowerCase();
+    if (current === 'em_atendimento' || current === 'finalizada') return;
+
+    isAutoStatusUpdatingRef.current = true;
+    try {
+      await persistStatus('em_atendimento');
+      setStatusColetor('Dedo detectado no sensor. Status atualizado para Em atendimento.');
+    } catch (error) {
+      console.warn('[SocorristaDetalhe] falha ao atualizar para em_atendimento', error);
+    } finally {
+      isAutoStatusUpdatingRef.current = false;
+    }
+  }
+
+  async function startLocationMonitoring() {
+    if (locationSubscriptionRef.current) return;
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('[SocorristaDetalhe] permissao de localizacao negada');
+        return;
+      }
+
+      locationSubscriptionRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Highest,
+          timeInterval: 5000,
+          distanceInterval: 5,
+        },
+        async (position) => {
+          const previous = lastLocationRef.current;
+          lastLocationRef.current = position;
+
+          const currentStatus = (detalhe?.status || '').toLowerCase();
+          if (currentStatus !== 'guarnicao_empenhada') return;
+
+          const speed = position.coords.speed;
+          const moved = previous ? getDistanceMeters(previous, position) : 0;
+          if ((speed !== null && speed > 1.5) || moved >= 15) {
+            await attemptAutoAdvanceToMoving();
+          }
+        },
+      );
+    } catch (error) {
+      console.warn('[SocorristaDetalhe] erro ao iniciar monitoramento GPS', error);
+    }
+  }
+
   const buscarLeituraOtg = useCallback(async () => {
     try {
       const resposta = await fetch(COLETOR_OTG_URL);
@@ -315,6 +402,8 @@ export default function BombeiroDetalhe() {
         setStatusColetor('Dedo não detectado. Aguardando posicionamento no sensor.');
         return;
       }
+
+      await attemptAutoAdvanceToAttending();
 
       if (!possuiAlgumSinalVital(dados)) {
         setStatusColetor('Dedo detectado, aguardando sinais vitais válidos.');
@@ -454,6 +543,18 @@ export default function BombeiroDetalhe() {
   useEffect(() => {
     void loadDetalhe();
   }, [loadDetalhe]);
+
+  useEffect(() => {
+    if (detalhe) {
+      void startLocationMonitoring();
+    }
+    return () => {
+      if (locationSubscriptionRef.current) {
+        locationSubscriptionRef.current.remove();
+        locationSubscriptionRef.current = null;
+      }
+    };
+  }, [detalhe]);
 
   useEffect(() => {
     void buscarLeituraOtg();

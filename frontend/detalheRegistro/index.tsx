@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { FontAwesome6 } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../backend/connectors/postgre';
 import { colors } from '../shared/theme';
 import LoadingState from '../shared/LoadingState';
@@ -34,6 +35,7 @@ function statusColor(status?: string | null) {
 }
 
 export default function DetalheRegistro({ route }: any) {
+  const navigation = useNavigation<any>();
   const registroParam = route?.params?.registro ?? {};
   const ocorrenciaId = registroParam.id;
 
@@ -125,6 +127,12 @@ export default function DetalheRegistro({ route }: any) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 30 }}>
+      <View style={styles.headerBack}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <FontAwesome6 name="arrow-left" size={18} color={colors.primary} />
+          <Text style={styles.backText}>Voltar</Text>
+        </TouchableOpacity>
+      </View>
       <View style={styles.card}>
         <View style={styles.statusHeader}>
           <View style={[styles.statusPill, { borderColor: statusColor(registro.status) }]}>
@@ -210,6 +218,9 @@ const styles = StyleSheet.create({
   timelineStatus: { color: colors.text, fontSize: 14, fontWeight: '800' },
   timelineDate: { color: colors.secondary, fontSize: 12, marginTop: 2 },
   timelineObs: { color: colors.secondary, fontSize: 13, marginTop: 4 },
+  headerBack: { paddingVertical: 8, marginBottom: 8 },
+  backButton: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  backText: { color: colors.primary, fontSize: 15, fontWeight: '700' },
 });
 
 

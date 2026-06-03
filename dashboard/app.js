@@ -1044,6 +1044,14 @@ function setupRealtime() {
     .channel("ciodes_dashboard_changes")
     .on(
       "postgres_changes",
+      { event: "INSERT", schema: "public", table: "ocorrencias" },
+      () => {
+        showMessage("Nova ocorrência recebida. Atualizando...", "info");
+        void loadData().finally(() => setTimeout(hideMessage, 3000));
+      },
+    )
+    .on(
+      "postgres_changes",
       { event: "*", schema: "public", table: "ocorrencias" },
       () => void loadData(),
     )
