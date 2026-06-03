@@ -54,6 +54,16 @@ function fieldValue(value: unknown, suffix = '') {
 }
 
 
+function resolveFinalizacaoTime(ocorrencia: any) {
+  return formatDateTime(ocorrencia?.finalizada_em || ocorrencia?.data_finalizacao || ocorrencia?.finalizacao_em || null);
+}
+
+function parseScore(value: string) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+
 function escapeHtml(value: unknown) {
   if (value === null || value === undefined) return '';
   return String(value)
@@ -112,9 +122,18 @@ function buildInitialFormData(ocorrencia: any, ultimaLeitura?: any | null, alert
   const alertaMaisRecente = alertas?.[0];
   return {
     triagem: '',
+    glasgowAberturaOcular: '',
+    glasgowFala: '',
+    glasgowRespostaMotora: '',
+    glasgowPupilas: '',
+    glasgowTotal: '',
+    glasgowResumo: '',
     nomeVitima: ocorrencia?.vitima_nome || '',
+    cpfVitima: ocorrencia?.vitima_cpf || '',
+    dataNascimentoVitima: ocorrencia?.vitima_data_nascimento || '',
     tipoVitima: ocorrencia?.tipo_vitima?.nome || '',
     idadeVitima: resolveVictimAge(ocorrencia),
+    nomeContatoEmergencia: ocorrencia?.solicitante?.nome || '',
     contatoEmergencia: ocorrencia?.solicitante?.telefone || '',
     pa: '',
     fc: formatVitalValue(ultimaLeitura?.frequencia_cardiaca_bpm),
@@ -125,11 +144,13 @@ function buildInitialFormData(ocorrencia: any, ultimaLeitura?: any | null, alert
       ? `${String(alertaMaisRecente.nivel || '').toUpperCase()} - ${alertaMaisRecente.mensagem || alertaMaisRecente.tipo || 'Alerta clinico'}`
       : '',
     sintomas: [],
+    tiposLesao: [],
+    regioesCorpo: [],
     observacoesCena: '',
     conduta: '',
     unidadeDestino: '',
     recebedorHospital: '',
-    horarioEntrega: '',
+    horarioEntrega: resolveFinalizacaoTime(ocorrencia),
     ...draft,
   };
 }
@@ -150,6 +171,104 @@ const manchesterProtocols = [
   { id: 'green', label: 'Pouco Urgente', color: manchesterColors.green, description: 'Sintomas crônicos ou leves' },
 ];
 
+
+const glasgowAberturaOcularOptions = [
+  { id: '4', score: 4, label: '4 - Espontânea', description: 'Abre os olhos espontaneamente' },
+  { id: '3', score: 3, label: '3 - Ao chamado', description: 'Abre os olhos ao estímulo verbal' },
+  { id: '2', score: 2, label: '2 - À dor', description: 'Abre os olhos ao estímulo doloroso' },
+  { id: '1', score: 1, label: '1 - Nenhuma', description: 'Não abre os olhos' },
+];
+
+const glasgowFalaOptions = [
+  { id: '5', score: 5, label: '5 - Orientada', description: 'Conversa orientada e coerente' },
+  { id: '4', score: 4, label: '4 - Confusa', description: 'Conversa, porém desorientada' },
+  { id: '3', score: 3, label: '3 - Palavras inapropriadas', description: 'Palavras desconexas ou inadequadas' },
+  { id: '2', score: 2, label: '2 - Sons incompreensíveis', description: 'Emite sons, sem palavras compreensíveis' },
+  { id: '1', score: 1, label: '1 - Nenhuma', description: 'Não apresenta resposta verbal' },
+];
+
+const glasgowRespostaMotoraOptions = [
+  { id: '6', score: 6, label: '6 - Obedece comandos', description: 'Executa comandos simples' },
+  { id: '5', score: 5, label: '5 - Localiza dor', description: 'Localiza e tenta afastar estímulo doloroso' },
+  { id: '4', score: 4, label: '4 - Retirada à dor', description: 'Retira o membro ao estímulo doloroso' },
+  { id: '3', score: 3, label: '3 - Flexão anormal', description: 'Resposta flexora anormal' },
+  { id: '2', score: 2, label: '2 - Extensão anormal', description: 'Resposta extensora anormal' },
+  { id: '1', score: 1, label: '1 - Nenhuma', description: 'Ausência de resposta motora' },
+];
+
+const pupilasOptions = [
+  { id: 'normais', label: 'Isocóricas e fotorreagentes', risk: 'normal' },
+  { id: 'anisocoricas', label: 'Anisocóricas', risk: 'alterada' },
+  { id: 'mioticas', label: 'Mióticas', risk: 'alterada' },
+  { id: 'midriaticas', label: 'Midriáticas', risk: 'alterada' },
+  { id: 'arreativas', label: 'Arreativas / sem reação à luz', risk: 'grave' },
+];
+
+function classificarManchesterPorGlasgow(total: number, pupilas: string) {
+  let manchester = 'green';
+
+  if (total <= 8) manchester = 'red';
+  else if (total <= 12) manchester = 'orange';
+  else if (total <= 14) manchester = 'yellow';
+  else manchester = 'green';
+
+  if (pupilas === 'arreativas') {
+    manchester = total <= 8 ? 'red' : 'orange';
+  } else if (['anisocoricas', 'mioticas', 'midriaticas'].includes(pupilas)) {
+    if (manchester === 'green') manchester = 'yellow';
+    if (manchester === 'yellow' && total <= 13) manchester = 'orange';
+  }
+
+  return manchester;
+}
+
+function getManchesterLabel(id: string) {
+  return manchesterProtocols.find((item) => item.id === id)?.label || 'Urgente';
+}
+
+function calcularGlasgowResumo(data: Partial<RelatorioData>) {
+  const ocular = parseScore(data.glasgowAberturaOcular || '');
+  const fala = parseScore(data.glasgowFala || '');
+  const motora = parseScore(data.glasgowRespostaMotora || '');
+  const completo = ocular > 0 && fala > 0 && motora > 0;
+  const total = completo ? ocular + fala + motora : 0;
+  const manchester = completo ? classificarManchesterPorGlasgow(total, data.glasgowPupilas || '') : '';
+
+  return {
+    completo,
+    total,
+    manchester,
+    resumo: completo
+      ? `Glasgow ${total}/15 - Manchester sugerido: ${getManchesterLabel(manchester)}`
+      : 'Preencha abertura ocular, fala e resposta motora para calcular Glasgow.',
+  };
+}
+
+const injuryTypes = [
+  'Fratura',
+  'Sangramento',
+  'Queimadura',
+  'Ferimento corto-contuso',
+  'Escoriação',
+  'Luxação / entorse',
+  'Dor localizada',
+];
+
+const bodyRegions = [
+  'Cabeça',
+  'Face',
+  'Pescoço',
+  'Tórax',
+  'Abdome',
+  'Coluna',
+  'Pelve',
+  'Membro superior direito',
+  'Membro superior esquerdo',
+  'Membro inferior direito',
+  'Membro inferior esquerdo',
+  'Múltiplas regiões',
+];
+
 const commonSymptoms = [
   'Dor de cabeça',
   'Desmaio',
@@ -164,15 +283,24 @@ const commonSymptoms = [
 ];
 
 export type RelatorioData = {
-  // Triagem
+  // Triagem / Glasgow
   triagem: string;
-  
+  glasgowAberturaOcular: string;
+  glasgowFala: string;
+  glasgowRespostaMotora: string;
+  glasgowPupilas: string;
+  glasgowTotal: string;
+  glasgowResumo: string;
+
   // Dados da Vítima
   nomeVitima: string;
+  cpfVitima: string;
+  dataNascimentoVitima: string;
   tipoVitima: string;
   idadeVitima: string;
+  nomeContatoEmergencia: string;
   contatoEmergencia: string;
-  
+
   // Sinais Vitais
   pa: string;
   fc: string;
@@ -180,10 +308,12 @@ export type RelatorioData = {
   temperatura: string;
   horarioLeitura: string;
   alertaClinico: string;
-  
-  // Sintomas
+
+  // Sintomas e lesões
   sintomas: string[];
-  
+  tiposLesao: string[];
+  regioesCorpo: string[];
+
   // Conduta
   observacoesCena: string;
   conduta: string;
@@ -207,6 +337,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
   
   const [formData, setFormData] = useState<RelatorioData>(() => buildInitialFormData(ocorrencia, ultimaLeitura, alertas));
   const [historicoLeituras, setHistoricoLeituras] = useState<any[]>([]);
+  const [historicoAlertas, setHistoricoAlertas] = useState<any[]>([]);
 
   const [expandedSections, setExpandedSections] = useState({
     vitima: false,
@@ -223,7 +354,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
     async function loadDraft() {
       const baseData = buildInitialFormData(ocorrencia, ultimaLeitura, alertas);
 
-      const [draftResult, historicoResult] = await Promise.all([
+      const [draftResult, historicoResult, alertasHistoricoResult] = await Promise.all([
         supabase
           .from('formularios_ocorrencia')
           .select('dados_json')
@@ -234,18 +365,31 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
           .select('id, frequencia_cardiaca_bpm, saturacao_spo2, temperatura_c, coletado_em')
           .eq('ocorrencia_id', ocorrencia.id)
           .order('coletado_em', { ascending: true }),
+        supabase
+          .from('alertas_sinais_vitais')
+          .select('id, leitura_id, nivel, tipo, mensagem, instrucao, criado_em')
+          .eq('ocorrencia_id', ocorrencia.id)
+          .order('criado_em', { ascending: true }),
       ]);
 
       if (!isActive) return;
 
       const { data, error } = draftResult;
       const { data: historicoData, error: historicoError } = historicoResult;
+      const { data: alertasHistoricoData, error: alertasHistoricoError } = alertasHistoricoResult;
 
       if (historicoError) {
         console.error('[RelatorioPDF] erro ao carregar historico de sinais vitais:', historicoError);
         setHistoricoLeituras([]);
       } else {
         setHistoricoLeituras(historicoData || []);
+      }
+
+      if (alertasHistoricoError) {
+        console.error('[RelatorioPDF] erro ao carregar alertas historicos:', alertasHistoricoError);
+        setHistoricoAlertas(alertas || []);
+      } else {
+        setHistoricoAlertas(alertasHistoricoData || alertas || []);
       }
 
       if (error) {
@@ -312,6 +456,35 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
     }));
   };
 
+
+  const toggleArrayField = (field: 'tiposLesao' | 'regioesCorpo', value: string) => {
+    setFormData(prev => {
+      const current = prev[field] || [];
+      return {
+        ...prev,
+        [field]: current.includes(value)
+          ? current.filter((item) => item !== value)
+          : [...current, value],
+      };
+    });
+  };
+
+  const updateGlasgowField = (
+    field: 'glasgowAberturaOcular' | 'glasgowFala' | 'glasgowRespostaMotora' | 'glasgowPupilas',
+    value: string
+  ) => {
+    setFormData(prev => {
+      const next = { ...prev, [field]: value };
+      const resumo = calcularGlasgowResumo(next);
+      return {
+        ...next,
+        glasgowTotal: resumo.total ? String(resumo.total) : '',
+        glasgowResumo: resumo.resumo,
+        triagem: resumo.manchester || prev.triagem,
+      };
+    });
+  };
+
   const handleNext = () => {
     const sections: Array<'triagem' | 'vitima' | 'vitais' | 'sintomas' | 'conduta' | 'preview'> = ['triagem', 'vitima', 'vitais', 'sintomas', 'conduta', 'preview'];
     const currentIdx = sections.indexOf(section);
@@ -350,7 +523,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
       const dateStr = now.toLocaleDateString('pt-BR');
       const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const triageInfo = getTriagemInfo(formData.triagem);
-      const historicoSinaisHtml = buildHistoricoSinaisHtml(historicoLeituras, alertas);
+      const historicoSinaisHtml = buildHistoricoSinaisHtml(historicoLeituras, historicoAlertas);
 
       const htmlContent = `
         <!DOCTYPE html>
@@ -628,6 +801,30 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
             </div>
             
             <div class="section">
+              <div class="section-title">Glasgow e classificação de risco</div>
+              <div class="info-line">
+                <div class="info-label">Ocular:</div>
+                <div class="info-value">${fieldValue(formData.glasgowAberturaOcular ? `${formData.glasgowAberturaOcular} ponto(s)` : '')}</div>
+              </div>
+              <div class="info-line">
+                <div class="info-label">Fala:</div>
+                <div class="info-value">${fieldValue(formData.glasgowFala ? `${formData.glasgowFala} ponto(s)` : '')}</div>
+              </div>
+              <div class="info-line">
+                <div class="info-label">Motora:</div>
+                <div class="info-value">${fieldValue(formData.glasgowRespostaMotora ? `${formData.glasgowRespostaMotora} ponto(s)` : '')}</div>
+              </div>
+              <div class="info-line">
+                <div class="info-label">Pupilas:</div>
+                <div class="info-value">${fieldValue(pupilasOptions.find(p => p.id === formData.glasgowPupilas)?.label || '')}</div>
+              </div>
+              <div class="info-line">
+                <div class="info-label">Resultado:</div>
+                <div class="info-value">${fieldValue(formData.glasgowResumo)}</div>
+              </div>
+            </div>
+
+            <div class="section">
               <div class="section-title">Identificação</div>
               <div class="info-line">
                 <div class="info-label">Local:</div>
@@ -654,12 +851,24 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
                 <div class="info-value">${fieldValue(formData.nomeVitima)}</div>
               </div>
               <div class="info-line">
+                <div class="info-label">CPF:</div>
+                <div class="info-value">${fieldValue(formData.cpfVitima)}</div>
+              </div>
+              <div class="info-line">
+                <div class="info-label">Nascimento:</div>
+                <div class="info-value">${fieldValue(formData.dataNascimentoVitima)}</div>
+              </div>
+              <div class="info-line">
                 <div class="info-label">Tipo:</div>
                 <div class="info-value">${fieldValue(formData.tipoVitima)}</div>
               </div>
               <div class="info-line">
                 <div class="info-label">Idade:</div>
                 <div class="info-value">${fieldValue(formData.idadeVitima, ' anos')}</div>
+              </div>
+              <div class="info-line">
+                <div class="info-label">Contato nome:</div>
+                <div class="info-value">${fieldValue(formData.nomeContatoEmergencia)}</div>
               </div>
               <div class="info-line">
                 <div class="info-label">Contato:</div>
@@ -695,7 +904,8 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
                 ${formData.sintomas.length > 0 
                   ? formData.sintomas.map((s, i) => `${i > 0 ? ' • ' : ''}${s}`).join('')
                   : ''}
-                ${formData.observacoesCena ? `<br>${formData.observacoesCena}` : ''}
+                ${formData.tiposLesao?.length ? `<br><strong>Intercorrências:</strong> ${formData.tiposLesao.join(' • ')}` : ''}
+                ${formData.regioesCorpo?.length ? `<br><strong>Regiões:</strong> ${formData.regioesCorpo.join(' • ')}` : ''}
               </div>
             </div>
             
@@ -777,33 +987,72 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
     }
   };
 
-  const renderTriagemSection = () => (
-    <ScrollView style={styles.sectionContent}>
-      <Text style={styles.sectionTitle}>Selecione o Nível de Triagem</Text>
-      <Text style={styles.sectionSubtitle}>Protocolo de Manchester - Classificação de Risco</Text>
-      
-      {manchesterProtocols.map((protocol) => (
-        <TouchableOpacity
-          key={protocol.id}
-          style={[
-            styles.triagemCard,
-            { borderLeftColor: protocol.color },
-            formData.triagem === protocol.id && styles.triagemCardSelected,
-          ]}
-          onPress={() => setFormData(prev => ({ ...prev, triagem: protocol.id }))}
-        >
-          <View style={[styles.triagemDot, { backgroundColor: protocol.color }]} />
-          <View style={styles.triagemContent}>
-            <Text style={styles.triagemLabel}>{protocol.label}</Text>
-            <Text style={styles.triagemDescription}>{protocol.description}</Text>
-          </View>
-          {formData.triagem === protocol.id && (
-            <MaterialCommunityIcons name="check-circle" size={24} color={protocol.color} />
-          )}
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  );
+  const renderTriagemSection = () => {
+    const resumo = calcularGlasgowResumo(formData);
+    const triageInfo = getTriagemInfo(formData.triagem);
+
+    const renderOption = (
+      field: 'glasgowAberturaOcular' | 'glasgowFala' | 'glasgowRespostaMotora' | 'glasgowPupilas',
+      option: any,
+      selected: boolean
+    ) => (
+      <TouchableOpacity
+        key={option.id}
+        style={[styles.glasgowOption, selected && styles.glasgowOptionSelected]}
+        onPress={() => updateGlasgowField(field, option.id)}
+      >
+        <MaterialCommunityIcons
+          name={selected ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
+          size={22}
+          color={selected ? colors.primary : colors.placeholder}
+          style={{ marginRight: 8 }}
+        />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.glasgowOptionTitle}>{option.label}</Text>
+          {option.description ? <Text style={styles.glasgowOptionDescription}>{option.description}</Text> : null}
+        </View>
+      </TouchableOpacity>
+    );
+
+    return (
+      <ScrollView style={styles.sectionContent}>
+        <Text style={styles.sectionTitle}>Avaliação neurológica - Glasgow</Text>
+        <Text style={styles.sectionSubtitle}>
+          Selecione os parâmetros observados. O resultado sugere a classificação de risco usada no relatório.
+        </Text>
+
+        <View style={styles.glasgowSummaryBox}>
+          <Text style={styles.glasgowSummaryText}>
+            {resumo.completo ? `Glasgow: ${resumo.total}/15` : 'Glasgow ainda incompleto'}
+          </Text>
+          <Text style={[styles.glasgowRiskText, { color: triageInfo.cor }]}>
+            Manchester sugerido: {resumo.completo ? getManchesterLabel(formData.triagem) : 'aguardando preenchimento'}
+          </Text>
+          <Text style={styles.glasgowHelpText}>{formData.glasgowResumo || resumo.resumo}</Text>
+        </View>
+
+        <Text style={styles.inputLabel}>Abertura ocular</Text>
+        {glasgowAberturaOcularOptions.map((option) =>
+          renderOption('glasgowAberturaOcular', option, formData.glasgowAberturaOcular === option.id)
+        )}
+
+        <Text style={styles.inputLabel}>Fala / resposta verbal</Text>
+        {glasgowFalaOptions.map((option) =>
+          renderOption('glasgowFala', option, formData.glasgowFala === option.id)
+        )}
+
+        <Text style={styles.inputLabel}>Resposta motora</Text>
+        {glasgowRespostaMotoraOptions.map((option) =>
+          renderOption('glasgowRespostaMotora', option, formData.glasgowRespostaMotora === option.id)
+        )}
+
+        <Text style={styles.inputLabel}>Condições das pupilas</Text>
+        {pupilasOptions.map((option) =>
+          renderOption('glasgowPupilas', option, formData.glasgowPupilas === option.id)
+        )}
+      </ScrollView>
+    );
+  };
 
   const renderVitimaSection = () => (
     <ScrollView style={styles.sectionContent}>
@@ -831,6 +1080,32 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
               onChangeText={(text) => setFormData(prev => ({ ...prev, nomeVitima: text }))}
             />
 
+            <Text style={styles.inputLabel}>CPF da vítima</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Digite o CPF"
+              placeholderTextColor={colors.placeholder}
+              keyboardType="numeric"
+              value={formData.cpfVitima}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, cpfVitima: text }))}
+            />
+
+            <Text style={styles.inputLabel}>Data de nascimento</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="AAAA-MM-DD ou DD/MM/AAAA"
+              placeholderTextColor={colors.placeholder}
+              value={formData.dataNascimentoVitima}
+              onChangeText={(text) => {
+                const idade = calculateAgeFromBirthDate(text);
+                setFormData(prev => ({
+                  ...prev,
+                  dataNascimentoVitima: text,
+                  idadeVitima: idade || prev.idadeVitima,
+                }));
+              }}
+            />
+
             <Text style={styles.inputLabel}>Tipo da Vítima</Text>
             <TextInput
               style={styles.input}
@@ -850,7 +1125,16 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
               onChangeText={(text) => setFormData(prev => ({ ...prev, idadeVitima: text }))}
             />
             
-            <Text style={styles.inputLabel}>Contato de Emergência</Text>
+            <Text style={styles.inputLabel}>Nome do contato de emergência</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Nome do contato"
+              placeholderTextColor={colors.placeholder}
+              value={formData.nomeContatoEmergencia}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, nomeContatoEmergencia: text }))}
+            />
+
+            <Text style={styles.inputLabel}>Telefone do contato de emergência</Text>
             <TextInput
               style={styles.input}
               placeholder="Telefone ou email"
@@ -887,7 +1171,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
             ) : (
               <View style={styles.historyList}>
                 {historicoLeituras.map((leitura) => {
-                  const alertsFor = (alertas || []).filter(a => a.leitura_id === leitura.id);
+                  const alertsFor = (historicoAlertas || []).filter(a => a.leitura_id === leitura.id);
                   return (
                     <View key={leitura.id} style={styles.historyItem}>
                       <Text style={styles.historyTime}>{formatDateTime(leitura.coletado_em)}</Text>
@@ -941,6 +1225,46 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
                 <Text style={styles.checkboxLabel}>{symptom}</Text>
               </View>
             ))}
+
+            <Text style={[styles.inputLabel, { marginTop: 14 }]}>Tipo de intercorrência / lesão</Text>
+            {injuryTypes.map((item) => (
+              <View key={item} style={styles.checkboxRow}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => toggleArrayField('tiposLesao', item)}
+                >
+                  <MaterialCommunityIcons
+                    name={formData.tiposLesao.includes(item) ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                    size={24}
+                    color={formData.tiposLesao.includes(item) ? colors.primary : colors.border}
+                  />
+                </TouchableOpacity>
+                <Text style={styles.checkboxLabel}>{item}</Text>
+              </View>
+            ))}
+
+            <Text style={[styles.inputLabel, { marginTop: 14 }]}>Região do corpo acometida</Text>
+            <View style={styles.bodyGrid}>
+              {bodyRegions.map((region) => (
+                <TouchableOpacity
+                  key={region}
+                  style={[
+                    styles.bodyChip,
+                    formData.regioesCorpo.includes(region) && styles.bodyChipSelected,
+                  ]}
+                  onPress={() => toggleArrayField('regioesCorpo', region)}
+                >
+                  <Text
+                    style={[
+                      styles.bodyChipText,
+                      formData.regioesCorpo.includes(region) && styles.bodyChipTextSelected,
+                    ]}
+                  >
+                    {region}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         )}
       </View>
@@ -964,17 +1288,6 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
         
         {expandedSections.conduta && (
           <View style={styles.accordionContent}>
-            <Text style={styles.inputLabel}>Observações da cena</Text>
-            <TextInput
-              style={[styles.input, { minHeight: 100 }]}
-              placeholder="Ex: cena segura, familiares presentes, mecanismo do trauma, riscos no local..."
-              placeholderTextColor={colors.placeholder}
-              multiline
-              textAlignVertical="top"
-              value={formData.observacoesCena}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, observacoesCena: text }))}
-            />
-
             <Text style={styles.inputLabel}>Descreva a conduta adotada</Text>
             <TextInput
               style={[styles.input, { minHeight: 150 }]}
@@ -1004,13 +1317,13 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
               onChangeText={(text) => setFormData(prev => ({ ...prev, recebedorHospital: text }))}
             />
 
-            <Text style={styles.inputLabel}>Horário da entrega</Text>
+            <Text style={styles.inputLabel}>Horário da entrega / finalização</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ex: 15:02"
+              placeholder="Será preenchido quando a ocorrência for finalizada"
               placeholderTextColor={colors.placeholder}
-              value={formData.horarioEntrega}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, horarioEntrega: text }))}
+              editable={false}
+              value={formData.horarioEntrega || resolveFinalizacaoTime(ocorrencia)}
             />
           </View>
         )}
@@ -1041,6 +1354,13 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
           </View>
 
           <View style={styles.a4Section}>
+            <Text style={styles.a4SectionTitle}>Glasgow e risco Manchester</Text>
+            <PreviewLine label="Glasgow" value={formData.glasgowTotal ? `${formData.glasgowTotal}/15` : ''} />
+            <PreviewLine label="Pupilas" value={pupilasOptions.find(p => p.id === formData.glasgowPupilas)?.label || ''} />
+            <PreviewLine label="Risco" value={formData.glasgowResumo} />
+          </View>
+
+          <View style={styles.a4Section}>
             <Text style={styles.a4SectionTitle}>Identificação</Text>
             <PreviewLine label="Local" value={fieldValue(ocorrencia?.endereco_texto)} />
             <PreviewLine
@@ -1054,8 +1374,11 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
           <View style={styles.a4Section}>
             <Text style={styles.a4SectionTitle}>Vítima</Text>
             <PreviewLine label="Nome" value={fieldValue(formData.nomeVitima)} />
+            <PreviewLine label="CPF" value={fieldValue(formData.cpfVitima)} />
+            <PreviewLine label="Nascimento" value={fieldValue(formData.dataNascimentoVitima)} />
             <PreviewLine label="Tipo" value={fieldValue(formData.tipoVitima)} />
             <PreviewLine label="Idade" value={fieldValue(formData.idadeVitima, ' anos')} />
+            <PreviewLine label="Contato nome" value={fieldValue(formData.nomeContatoEmergencia)} />
             <PreviewLine label="Contato" value={fieldValue(formData.contatoEmergencia)} />
           </View>
 
@@ -1068,7 +1391,7 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
             ) : (
               <View style={styles.a4HistoryTable}>
                 {historicoLeituras.map((leitura) => {
-                  const alertsFor = (alertas || []).filter(a => a.leitura_id === leitura.id);
+                  const alertsFor = (historicoAlertas || []).filter(a => a.leitura_id === leitura.id);
                   return (
                     <View key={leitura.id} style={styles.a4HistoryRow}>
                       <Text style={styles.a4HistoryTime}>{formatDateTime(leitura.coletado_em)}</Text>
@@ -1089,7 +1412,8 @@ export default function RelatorioPDF({ visible, onClose, ocorrencia, socorrista,
             <Text style={styles.a4SectionTitle}>Avaliação clínica</Text>
             <Text style={styles.a4Box}>
               {formData.sintomas.length > 0 ? formData.sintomas.join(' • ') : ''}
-              {formData.observacoesCena ? `\n${formData.observacoesCena}` : ''}
+              {formData.tiposLesao?.length ? `\nIntercorrências: ${formData.tiposLesao.join(' • ')}` : ''}
+              {formData.regioesCorpo?.length ? `\nRegiões acometidas: ${formData.regioesCorpo.join(' • ')}` : ''}
             </Text>
           </View>
 
@@ -1776,6 +2100,80 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  glasgowSummaryBox: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  glasgowSummaryText: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  glasgowRiskText: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  glasgowHelpText: {
+    color: colors.placeholder,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  glasgowOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 8,
+  },
+  glasgowOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: '#eff6ff',
+  },
+  glasgowOptionTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  glasgowOptionDescription: {
+    color: colors.placeholder,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  bodyGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  bodyChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#ffffff',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  bodyChipSelected: {
+    borderColor: colors.primary,
+    backgroundColor: '#eff6ff',
+  },
+  bodyChipText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  bodyChipTextSelected: {
+    color: colors.primary,
   },
   historyList: {
     backgroundColor: '#ffffff',

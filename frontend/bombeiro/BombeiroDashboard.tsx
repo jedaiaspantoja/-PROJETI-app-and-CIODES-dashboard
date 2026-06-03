@@ -165,7 +165,7 @@ export default function BombeiroDashboard({ navigation }: any) {
               'postgres_changes',
               { event: '*', schema: 'public', table: 'ocorrencia_empenhos', filter: `guarnicao_id=eq.${gid}` },
               (payload) => {
-                console.log('[Realtime] ocorrencia_empenhos', gid, payload.eventType || payload.event, payload.new || payload.old);
+                console.log('[Realtime] ocorrencia_empenhos', gid, payload.eventType || payload.eventType, payload.new || payload.old);
                 // atualiza somente os dados sem recriar canais
                 void refreshOcorrencias(guarnicaoIds);
               }
