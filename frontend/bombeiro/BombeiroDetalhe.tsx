@@ -172,7 +172,14 @@ export default function BombeiroDetalhe() {
   const locationSubscriptionRef = useRef<any>(null);
   const lastLocationRef = useRef<Location.LocationObject | null>(null);
   const isAutoStatusUpdatingRef = useRef(false);
+  const detalheRef = useRef<any | null>(null);
+  const currentStatusRef = useRef<string>('');
   const user = getCurrentUser();
+
+  useEffect(() => {
+    detalheRef.current = detalhe;
+    currentStatusRef.current = (detalhe?.status || '').toLowerCase();
+  }, [detalhe]);
 
   const salvarLeituraNoBanco = useCallback(async (dados: any) => {
     if (!ocorrenciaId) return;
@@ -316,14 +323,17 @@ export default function BombeiroDetalhe() {
   }
 
   async function attemptAutoAdvanceToMoving() {
-    if (!detalhe || !detalhe.id || isAutoStatusUpdatingRef.current) return;
-    const current = (detalhe.status || '').toLowerCase();
+    const detalheAtual = detalheRef.current;
+    const current = currentStatusRef.current;
+
+    if (!detalheAtual?.id || !ocorrenciaId || isAutoStatusUpdatingRef.current) return;
     if (current !== 'guarnicao_empenhada') return;
 
     isAutoStatusUpdatingRef.current = true;
     try {
       await persistStatus('em_deslocamento');
-      setStatusColetor('Movimento detectado. Status atualizado para Em deslocamento.');
+      currentStatusRef.current = 'em_deslocamento';
+      setStatusColetor('Movimento detectado pelo GPS. Status atualizado para Em deslocamento.');
     } catch (error) {
       console.warn('[SocorristaDetalhe] falha ao atualizar para em_deslocamento', error);
     } finally {
@@ -332,13 +342,16 @@ export default function BombeiroDetalhe() {
   }
 
   async function attemptAutoAdvanceToAttending() {
-    if (!detalhe || !detalhe.id || isAutoStatusUpdatingRef.current) return;
-    const current = (detalhe.status || '').toLowerCase();
-    if (current === 'em_atendimento' || current === 'finalizada') return;
+    const detalheAtual = detalheRef.current;
+    const current = currentStatusRef.current;
+
+    if (!detalheAtual?.id || !ocorrenciaId || isAutoStatusUpdatingRef.current) return;
+    if (current === 'em_atendimento' || current === 'finalizada' || current === 'cancelada') return;
 
     isAutoStatusUpdatingRef.current = true;
     try {
       await persistStatus('em_atendimento');
+      currentStatusRef.current = 'em_atendimento';
       setStatusColetor('Dedo detectado no sensor. Status atualizado para Em atendimento.');
     } catch (error) {
       console.warn('[SocorristaDetalhe] falha ao atualizar para em_atendimento', error);
@@ -359,14 +372,14 @@ export default function BombeiroDetalhe() {
       locationSubscriptionRef.current = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.Highest,
-          timeInterval: 5000,
-          distanceInterval: 5,
+          timeInterval: 3000,
+          distanceInterval: 3,
         },
         async (position) => {
           const previous = lastLocationRef.current;
           lastLocationRef.current = position;
 
-          const currentStatus = (detalhe?.status || '').toLowerCase();
+          const currentStatus = currentStatusRef.current;
           if (currentStatus !== 'guarnicao_empenhada') return;
 
           const speed = position.coords.speed;
@@ -616,7 +629,12 @@ export default function BombeiroDetalhe() {
         .update({ status: next === 'finalizada' ? 'finalizada' : next, atualizado_em: new Date().toISOString() })
         .eq('ocorrencia_id', ocorrenciaId);
 
-      setDetalhe((old: any) => (old ? { ...old, status: next } : old));
+      currentStatusRef.current = next;
+      setDetalhe((old: any) => {
+        const updated = old ? { ...old, status: next } : old;
+        detalheRef.current = updated;
+        return updated;
+      });
     } finally {
       setUpdatingStatus(false);
     }
